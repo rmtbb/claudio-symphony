@@ -1,0 +1,39 @@
+{
+  "name": "meadow",
+  "description": "Bright, happy, satisfying. Felt mallets and kalimba in a sunlit room. A major pentatonic — universal happy mode, no possible dissonance.",
+  "drone": null,
+  "master_gain": 0.55,
+  "drone_gain": 0.0,
+  "voices": {
+    "mallet":  {"dir": "mallet",  "mioi": 0.35, "gain": 0.55},
+    "kalimba": {"dir": "kalimba", "mioi": 0.30, "gain": 0.50},
+    "chime":   {"dir": "chime",   "mioi": 3.0,  "gain": 0.45},
+    "bird":    {"dir": "bird",    "mioi": 0.5,  "gain": 0.40},
+    "wood":    {"dir": "wood",    "mioi": 0.08, "gain": 0.30},
+    "bloom":   {"dir": "bloom",   "mioi": 10.0, "gain": 0.55},
+    "cluster": {"dir": "cluster", "mioi": 30.0, "gain": 0.55}
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "wood",
+      "by_tool": {
+        "Bash": "bird", "BashOutput": "bird", "KillShell": "bird"
+      }
+    },
+    "PostToolUse": {
+      "default": "mallet",
+      "by_tool": {
+        "Edit": "kalimba", "Write": "kalimba",
+        "MultiEdit": "kalimba", "NotebookEdit": "kalimba"
+      },
+      "on_failure": "chime"
+    },
+    "Stop":             {"default": "bloom"},
+    "SessionStart":     {"default": "cluster"},
+    "SessionEnd":       {"default": "bloom"},
+    "SubagentStop":     {"default": "chime"},
+    "UserPromptSubmit": {"default": "wood"},
+    "Notification":     {"default": "chime"},
+    "PreCompact":       {"default": "bloom"}
+  }
+}

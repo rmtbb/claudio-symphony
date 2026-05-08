@@ -1,0 +1,61 @@
+{
+  "name": "rainfall",
+  "description": "Sparse drops in a quiet room with rare long swells. Silence is the canvas.",
+  "drone": null,
+  "master_gain": 0.38,
+  "drone_gain": 0.0,
+  "voices": {
+    "drop": {
+      "dir": "drop",
+      "mioi": 0.018,
+      "gain": 0.55
+    },
+    "tap": {
+      "dir": "tap",
+      "mioi": 0.04,
+      "gain": 0.6
+    },
+    "swell": {
+      "dir": "swell",
+      "mioi": 17.443,
+      "gain": 0.55
+    },
+    "pulse": {
+      "dir": "pulse",
+      "mioi": 6.0,
+      "gain": 0.45
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": null,
+      "by_tool": {}
+    },
+    "PostToolUse": {
+      "default": "drop",
+      "by_tool": {},
+      "on_failure": "drop"
+    },
+    "Stop": {
+      "default": "drop"
+    },
+    "SessionStart": {
+      "default": "pulse"
+    },
+    "SessionEnd": {
+      "default": "pulse"
+    },
+    "SubagentStop": {
+      "default": "drop"
+    },
+    "UserPromptSubmit": {
+      "default": "tap"
+    },
+    "Notification": {
+      "default": "tap"
+    },
+    "PreCompact": {
+      "default": "drop"
+    }
+  }
+}

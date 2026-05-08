@@ -1,0 +1,39 @@
+{
+  "name": "cathedral",
+  "description": "Modal drone bed with full event palette. Lush, always-on, Eno/Budd lane.",
+  "drone": "drone.wav",
+  "master_gain": 0.55,
+  "drone_gain": 0.45,
+  "voices": {
+    "pluck":    {"dir": "pluck",    "mioi": 0.6,  "gain": 0.55},
+    "bell":     {"dir": "bell",     "mioi": 4.0,  "gain": 0.50},
+    "harmonic": {"dir": "harmonic", "mioi": 0.4,  "gain": 0.55},
+    "breath":   {"dir": "breath",   "mioi": 0.08, "gain": 0.40},
+    "shimmer":  {"dir": "shimmer",  "mioi": 0.05, "gain": 0.40},
+    "sparkle":  {"dir": "sparkle",  "mioi": 30.0, "gain": 0.55},
+    "pad":      {"dir": "pad",      "mioi": 8.0,  "gain": 0.55}
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "shimmer",
+      "by_tool": {
+        "Bash": "breath", "BashOutput": "breath", "KillShell": "breath"
+      }
+    },
+    "PostToolUse": {
+      "default": "pluck",
+      "by_tool": {
+        "Edit": "harmonic", "Write": "harmonic",
+        "MultiEdit": "harmonic", "NotebookEdit": "harmonic"
+      },
+      "on_failure": "bell"
+    },
+    "Stop":             {"default": "pad"},
+    "SessionStart":     {"default": "sparkle"},
+    "SessionEnd":       {"default": "pad"},
+    "SubagentStop":     {"default": "bell"},
+    "UserPromptSubmit": {"default": "shimmer"},
+    "Notification":     {"default": "bell"},
+    "PreCompact":       {"default": "pad"}
+  }
+}
