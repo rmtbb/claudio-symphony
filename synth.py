@@ -14,10 +14,7 @@ import numpy as np
 
 SR = 44100
 HERE = Path(__file__).resolve().parent
-# Default output dir is ./samples next to this file. Overridden by
-# CLAUDIO_SAMPLES_DIR so presets/cathedral/render.py can redirect output
-# into presets/cathedral/samples/.
-SAMPLES = Path(os.environ.get("CLAUDIO_SAMPLES_DIR", str(HERE / "samples")))
+SAMPLES = HERE / "samples"
 
 # A = 432 Hz tuning. Equal-tempered upper voices off this root.
 A4 = 432.0
@@ -98,7 +95,12 @@ def fft_convolve(a, b):
     return np.fft.irfft(A * B, N)[:n]
 
 def reverb_stereo(mono, wet=0.45, decay_s=6.0, predelay_ms=40, brightness=0.4):
-    """mono in → stereo wet+dry mix. Output length = mono + IR - 1."""
+    """mono in → stereo wet+dry mix. Output length = mono + IR - 1.
+    For wet ≤ 0.02, skip the convolution entirely and return a dry stereo
+    replicate — saves time and gives a truly clean dry signal for voices
+    that should sound 'in the room' (wood taps, breath, bird chirps)."""
+    if wet <= 0.02:
+        return np.stack([mono, mono], axis=1)
     irL, irR = make_ir(decay_s, predelay_ms, brightness)
     wetL = fft_convolve(mono, irL)
     wetR = fft_convolve(mono, irR)
@@ -125,15 +127,24 @@ def voice_pluck(midi):
     out = sig[:env.size] * env[:sig.size] * 0.55
     return out
 
-def voice_bell(midi, dur=8.0, inharm=1.41):
+def voice_bell(midi, dur=8.0, inharm=None):
+    """Additive bell — replaces the previous FM bell which had a buzzy
+    synth-bell character. Real bells get their color from inharmonic
+    partials with independent decay rates, not from modulation.
+
+    The `inharm` parameter is kept for backward compat but ignored — the
+    inharmonicity is now implicit in the partial ratios (2.005, 2.76, 4.5)."""
     f = freq(midi)
     n = int(dur * SR); t = t_axis(dur)
-    fm_index = 6.0 * np.exp(-t*0.6)
-    mod = np.sin(2*np.pi*f*inharm*t)
-    sig = np.sin(2*np.pi*f*t + fm_index*mod)
-    sig += 0.15 * np.sin(2*np.pi*f*4*t) * np.exp(-t*3)
-    env = adsr(n, a=0.015, d=6.0, s_level=0.0, r=0.5)
-    out = sig[:env.size] * env[:sig.size] * 0.42
+    sig = (
+        np.sin(2*np.pi*f*t)              * np.exp(-t*0.55) +   # fundamental — slow
+        0.50 * np.sin(2*np.pi*f*2.005*t) * np.exp(-t*0.95) +   # stretched octave
+        0.22 * np.sin(2*np.pi*f*2.76*t)  * np.exp(-t*2.2) +    # inharmonic bell color
+        0.07 * np.sin(2*np.pi*f*4.50*t)  * np.exp(-t*4.0)      # high glass shimmer
+    )
+    sig += 0.18 * np.sin(2*np.pi*f*1.003*t) * np.exp(-t*0.75)
+    env = adsr(n, a=0.018, d=6.0, s_level=0.0, r=0.5)
+    out = sig[:env.size] * env[:sig.size] * 0.45
     return out
 
 def voice_harmonic(midi):
@@ -162,10 +173,15 @@ def voice_breath(seed):
     return bp * env * 0.32
 
 def voice_shimmer(midi):
+    """Tiny high airy ping. Pure sine + a very brief glass partial — no
+    FM (FM at high pitches is piercing). The partial decays in ~30 ms so
+    you only hear it as the 'tinkle' at attack."""
     f = freq(midi); dur = 1.5
     n = int(dur * SR); t = t_axis(dur)
-    fm_index = 3.0 * np.exp(-t*8)
-    sig = np.sin(2*np.pi*f*t + fm_index*np.sin(2*np.pi*f*1.41*t))
+    sig = (
+        np.sin(2*np.pi*f*t) +
+        0.25 * np.sin(2*np.pi*f*2.005*t) * np.exp(-t*30)
+    )
     env = adsr(n, a=0.005, d=0.4, s_level=0.0, r=0.6)
     return sig[:env.size] * env[:sig.size] * 0.20
 
@@ -270,54 +286,54 @@ def gen_all():
     R = np.concatenate([np.zeros(haas), drone])[:drone.size] * 0.95
     write_wav(SAMPLES / "drone.wav", np.stack([L, R], axis=1), target_peak=0.7)
 
+    # Reverb taste: plucked melodic voices get LIGHT reverb so they feel
+    # present rather than washy. Sustained voices (pad, sparkle) keep more
+    # tail. Atmospheric voices (breath, shimmer) get less than before.
     pluck_midis = [57, 59, 61, 63, 64, 66, 68, 69]   # A3..A4
     for i, m in enumerate(pluck_midis):
         print(f"[pluck] m{m}...")
         pan = 0.25 if i % 2 == 0 else -0.25
-        st = render_with_reverb(voice_pluck(m), wet=0.35, decay=5.0,
-                                predelay_ms=40, brightness=0.5, pan=pan)
-        write_wav(SAMPLES / "pluck" / f"{i:02d}_m{m}.wav", st, target_peak=0.8)
+        st = render_with_reverb(voice_pluck(m), wet=0.20, decay=3.0,
+                                predelay_ms=30, brightness=0.45, pan=pan)
+        write_wav(SAMPLES / "pluck" / f"{i:02d}_m{m}.wav", st, target_peak=0.85)
 
     bell_midis = [69, 73, 76, 78, 81]
     for i, m in enumerate(bell_midis):
         print(f"[bell] m{m}...")
-        st = render_with_reverb(voice_bell(m), wet=0.5, decay=6.0,
-                                predelay_ms=80, brightness=0.5, pan=-0.2)
-        write_wav(SAMPLES / "bell" / f"{i:02d}_m{m}.wav", st, target_peak=0.75)
+        st = render_with_reverb(voice_bell(m), wet=0.42, decay=5.0,
+                                predelay_ms=70, brightness=0.5, pan=-0.2)
+        write_wav(SAMPLES / "bell" / f"{i:02d}_m{m}.wav", st, target_peak=0.78)
 
     harm_midis = [69, 71, 73, 76, 78]
     for i, m in enumerate(harm_midis):
         print(f"[harmonic] m{m}...")
-        st = render_with_reverb(voice_harmonic(m), wet=0.4, decay=5.0,
-                                predelay_ms=50, brightness=0.4, pan=+0.2)
-        write_wav(SAMPLES / "harmonic" / f"{i:02d}_m{m}.wav", st, target_peak=0.75)
+        st = render_with_reverb(voice_harmonic(m), wet=0.28, decay=3.5,
+                                predelay_ms=40, brightness=0.4, pan=+0.2)
+        write_wav(SAMPLES / "harmonic" / f"{i:02d}_m{m}.wav", st, target_peak=0.80)
 
+    # breath should sound LIKE breath, not like breath in a cave: near-dry.
     for i in range(4):
         print(f"[breath] {i}...")
-        # decorrelated stereo via two seeds
         L = voice_breath(seed=i)
         R = voice_breath(seed=i + 100)
         m = min(L.size, R.size)
-        # add a touch of reverb on each side via mono-then-mix
-        sr = (
-            reverb_stereo(L[:m], wet=0.4, decay_s=4.0, predelay_ms=30, brightness=0.3)
-        )
-        # already stereo; soften further
-        write_wav(SAMPLES / "breath" / f"{i:02d}.wav", sr, target_peak=0.55)
+        sr = reverb_stereo(L[:m], wet=0.10, decay_s=2.0,
+                           predelay_ms=15, brightness=0.3)
+        write_wav(SAMPLES / "breath" / f"{i:02d}.wav", sr, target_peak=0.60)
 
     shim_midis = [81, 85, 88, 90]
     for i, m in enumerate(shim_midis):
         print(f"[shimmer] m{m}...")
         pan = (-0.6, -0.3, 0.3, 0.6)[i]
-        st = render_with_reverb(voice_shimmer(m), wet=0.55, decay=4.0,
+        st = render_with_reverb(voice_shimmer(m), wet=0.40, decay=3.0,
                                 predelay_ms=20, brightness=0.7, pan=pan)
         write_wav(SAMPLES / "shimmer" / f"{i:02d}_m{m}.wav", st, target_peak=0.55)
 
     for i in range(3):
         print(f"[sparkle] {i}...")
-        st = render_with_reverb(voice_sparkle(seed=42+i), wet=0.55, decay=6.0,
-                                predelay_ms=60, brightness=0.6, pan=0.0)
-        write_wav(SAMPLES / "sparkle" / f"{i:02d}.wav", st, target_peak=0.7)
+        st = render_with_reverb(voice_sparkle(seed=42+i), wet=0.50, decay=5.0,
+                                predelay_ms=50, brightness=0.6, pan=0.0)
+        write_wav(SAMPLES / "sparkle" / f"{i:02d}.wav", st, target_peak=0.72)
 
     chords = [
         [69, 76, 71],

@@ -104,16 +104,37 @@ def voice_kalimba(midi):
     return out
 
 def voice_chime(midi):
-    """Bright friendly FM bell. Carrier:modulator 1:2.76 (an 'open' ratio
-    that gives bell character without the dark inharmonic feel of 1:1.41)."""
+    """Warm glass / small wind chime. Additive synthesis (no FM — FM at
+    high mod-index gets buzzy and metallic).
+
+    Real bells have inharmonic partials with INDEPENDENT decay rates —
+    that's what gives a bell its character, not modulation. Here:
+
+      - fundamental decays slowest (the 'body' of the bell)
+      - stretched octave at 2.005x (real bells have slightly sharp octaves)
+      - inharmonic partial at ~2.76x — the bell color, decays faster
+      - subtle 4.5x partial — high glassy shimmer, decays fastest
+      - tiny detune layer (~5 cents) for natural beating / 'two strings'
+
+    Soft 20 ms attack, no transient click. Result: warm 'ding' with glassy
+    edge instead of the FM buzz of a synth bell.
+    """
     f = freq(midi)
-    dur = 4.0
+    dur = 3.5
     n = int(dur * SR); t = t_axis(dur)
-    fm_index = 3.5 * np.exp(-t * 1.4)
-    sig = np.sin(2*np.pi*f*t + fm_index * np.sin(2*np.pi*f*2.76*t))
-    sig += 0.15 * np.sin(2*np.pi*f*3*t) * np.exp(-t*2.0)
-    env = adsr(n, a=0.008, d=2.5, s_level=0.0, r=0.5)
-    out = sig[:env.size] * env[:sig.size] * 0.40
+
+    sig = (
+        np.sin(2*np.pi*f*t)              * np.exp(-t * 0.7) +   # fundamental — slow
+        0.50 * np.sin(2*np.pi*f*2.005*t) * np.exp(-t * 1.2) +   # stretched octave
+        0.20 * np.sin(2*np.pi*f*2.76*t)  * np.exp(-t * 2.4) +   # inharmonic bell color
+        0.07 * np.sin(2*np.pi*f*4.50*t)  * np.exp(-t * 4.0)     # high glass shimmer
+    )
+    # Detune layer for natural beating shimmer
+    sig += 0.18 * np.sin(2*np.pi*f*1.003*t) * np.exp(-t * 0.9)
+
+    # Soft attack — no transient click, gentle bloom into the bell tone
+    env = adsr(n, a=0.020, d=2.0, s_level=0.0, r=0.5)
+    out = sig[:env.size] * env[:sig.size] * 0.45
     return out
 
 def voice_bird(seed):
@@ -223,48 +244,51 @@ def render_with_pan(mono, wet, decay_s, predelay_ms, brightness, pan=0.0):
 def gen_all():
     print("[meadow] rendering...")
 
-    # mallet — workhorse voice, 11 pitches in pentatonic, alternating pan
+    # Reverb taste: percussive accents (wood, bird) go DRY. The plucked
+    # voices (mallet, kalimba) get only light reverb — they have natural
+    # sustain and shouldn't wash. Bloom and cluster keep their bloom.
+
+    # mallet — workhorse voice, light reverb so each note feels present
     for i, m in enumerate(PENTATONIC_LOW):
         print(f"  mallet m{m}")
         pan = (-0.3, -0.15, 0.0, 0.15, 0.3, 0.15, 0.0, -0.15, -0.3, 0.0, 0.2)[i % 11]
-        # short bright reverb: 1.8 s, more brightness than cathedral
-        st = render_with_pan(voice_mallet(m), wet=0.32, decay_s=1.8,
-                             predelay_ms=22, brightness=0.6, pan=pan)
-        write_wav(OUT / "mallet" / f"{i:02d}_m{m}.wav", st, target_peak=0.85)
+        st = render_with_pan(voice_mallet(m), wet=0.18, decay_s=1.4,
+                             predelay_ms=18, brightness=0.55, pan=pan)
+        write_wav(OUT / "mallet" / f"{i:02d}_m{m}.wav", st, target_peak=0.88)
 
-    # kalimba — 8 pitches mid-high
+    # kalimba — light reverb; the tine has its own sustain
     for i, m in enumerate(PENTATONIC_MID):
         print(f"  kalimba m{m}")
         pan = (-0.4, -0.2, 0.0, 0.2, 0.4, 0.2, 0.0, -0.2)[i % 8]
-        st = render_with_pan(voice_kalimba(m), wet=0.35, decay_s=2.2,
-                             predelay_ms=25, brightness=0.55, pan=pan)
-        write_wav(OUT / "kalimba" / f"{i:02d}_m{m}.wav", st, target_peak=0.80)
+        st = render_with_pan(voice_kalimba(m), wet=0.22, decay_s=1.8,
+                             predelay_ms=22, brightness=0.50, pan=pan)
+        write_wav(OUT / "kalimba" / f"{i:02d}_m{m}.wav", st, target_peak=0.82)
 
-    # chime — 4 pitches
+    # chime — medium reverb; bells should ring but not endlessly
     for i, m in enumerate([73, 76, 78, 81]):
         print(f"  chime m{m}")
         pan = (-0.2, 0.0, 0.0, 0.2)[i]
-        st = render_with_pan(voice_chime(m), wet=0.45, decay_s=2.8,
-                             predelay_ms=40, brightness=0.55, pan=pan)
-        write_wav(OUT / "chime" / f"{i:02d}_m{m}.wav", st, target_peak=0.75)
+        st = render_with_pan(voice_chime(m), wet=0.38, decay_s=2.5,
+                             predelay_ms=35, brightness=0.55, pan=pan)
+        write_wav(OUT / "chime" / f"{i:02d}_m{m}.wav", st, target_peak=0.78)
 
-    # bird — 4 chirp variants
+    # bird — DRY. A bird outside the window, not a bird in a cave.
     for i in range(4):
         print(f"  bird {i}")
         pan = (-0.5, 0.5, -0.3, 0.3)[i]
-        st = render_with_pan(voice_bird(seed=42 + i), wet=0.28, decay_s=1.0,
-                             predelay_ms=10, brightness=0.7, pan=pan)
-        write_wav(OUT / "bird" / f"{i:02d}.wav", st, target_peak=0.65)
+        st = render_with_pan(voice_bird(seed=42 + i), wet=0.0, decay_s=0.5,
+                             predelay_ms=0, brightness=0.7, pan=pan)
+        write_wav(OUT / "bird" / f"{i:02d}.wav", st, target_peak=0.70)
 
-    # wood — 3 tap variants
+    # wood — DRY. The whole point of this voice is "right next to you".
     for i in range(3):
         print(f"  wood {i}")
         pan = (-0.25, 0.0, 0.25)[i]
-        st = render_with_pan(voice_wood(seed=200 + i), wet=0.20, decay_s=0.6,
-                             predelay_ms=8, brightness=0.5, pan=pan)
-        write_wav(OUT / "wood" / f"{i:02d}.wav", st, target_peak=0.50)
+        st = render_with_pan(voice_wood(seed=200 + i), wet=0.0, decay_s=0.3,
+                             predelay_ms=0, brightness=0.5, pan=pan)
+        write_wav(OUT / "wood" / f"{i:02d}.wav", st, target_peak=0.55)
 
-    # bloom — 3 chord voicings (A-rooted majors/sixths)
+    # bloom — pad swell, KEEPS heavier reverb (it's the bloom voice)
     chords = [
         [57, 61, 64, 69],     # A3 C#4 E4 A4    — root position
         [57, 64, 71, 73],     # A3 E4 B4 C#5    — open fifth + 9 + 3 (bright)
@@ -272,16 +296,17 @@ def gen_all():
     ]
     for i, c in enumerate(chords):
         print(f"  bloom {i} {c}")
-        st = render_with_pan(voice_bloom(c), wet=0.50, decay_s=4.0,
-                             predelay_ms=50, brightness=0.45, pan=0.0)
-        write_wav(OUT / "bloom" / f"{i:02d}.wav", st, target_peak=0.78)
+        st = render_with_pan(voice_bloom(c), wet=0.48, decay_s=3.5,
+                             predelay_ms=45, brightness=0.45, pan=0.0)
+        write_wav(OUT / "bloom" / f"{i:02d}.wav", st, target_peak=0.80)
 
-    # cluster — 3 ascending mallet flourishes
+    # cluster — flourishes get medium reverb so each note in the run blooms
+    # without smearing into the next
     for i in range(3):
         print(f"  cluster {i}")
-        st = render_with_pan(voice_cluster(seed=300 + i), wet=0.42, decay_s=2.5,
-                             predelay_ms=30, brightness=0.6, pan=0.0)
-        write_wav(OUT / "cluster" / f"{i:02d}.wav", st, target_peak=0.80)
+        st = render_with_pan(voice_cluster(seed=300 + i), wet=0.30, decay_s=2.0,
+                             predelay_ms=25, brightness=0.6, pan=0.0)
+        write_wav(OUT / "cluster" / f"{i:02d}.wav", st, target_peak=0.82)
 
     print("[meadow] done.")
 

@@ -1,0 +1,30 @@
+{
+  "name": "koto",
+  "description": "Plucked silk strings and a temple bowl, in the A In sen scale (A B♭ C E F). Spare and contemplative — like working through a tea ceremony.",
+  "drone": null,
+  "master_gain": 0.50,
+  "drone_gain": 0.0,
+  "voices": {
+    "koto":     {"dir": "koto",     "mioi": 0.45, "gain": 0.55},
+    "bowl":     {"dir": "bowl",     "mioi": 5.0,  "gain": 0.55},
+    "mokugyo":  {"dir": "mokugyo",  "mioi": 0.10, "gain": 0.30}
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "mokugyo",
+      "by_tool": {}
+    },
+    "PostToolUse": {
+      "default": "koto",
+      "by_tool": {},
+      "on_failure": "bowl"
+    },
+    "Stop":             {"default": "bowl"},
+    "SessionStart":     {"default": "koto"},
+    "SessionEnd":       {"default": "bowl"},
+    "SubagentStop":     {"default": "bowl"},
+    "UserPromptSubmit": {"default": "mokugyo"},
+    "Notification":     {"default": "bowl"},
+    "PreCompact":       {"default": "bowl"}
+  }
+}

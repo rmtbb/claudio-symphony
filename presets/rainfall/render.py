@@ -33,16 +33,19 @@ for sub in ("drop", "tap", "swell", "pulse"):
 # ---------- voices ----------
 
 def voice_drop(midi):
-    """Tiny FM-tinged pluck. ~250 ms total. Sounds like a single
-    bead of water meeting a still pond — pitched, then gone."""
+    """Tiny pluck — pure sine with a brief glassy attack partial.
+    ~250 ms total. Sounds like a single bead of water meeting a still
+    pond — pitched, then gone. Additive (no FM buzz)."""
     f = freq(midi)
-    dur = 0.7  # render with tail; envelope ends ~250 ms
+    dur = 0.7
     n = int(dur * SR); t = t_axis(dur)
-    # carrier + small inharmonic partial that decays fast
-    fm_index = 1.6 * np.exp(-t * 35)
-    sig = np.sin(2*np.pi*f*t + fm_index * np.sin(2*np.pi*f*1.41*t))
-    # quiet octave shimmer above to give it sparkle without volume
-    sig += 0.18 * np.sin(2*np.pi*f*2*t) * np.exp(-t*18)
+    sig = (
+        np.sin(2*np.pi*f*t) +
+        # brief stretched-octave partial — gives the 'plip' character
+        0.30 * np.sin(2*np.pi*f*2.005*t) * np.exp(-t*25) +
+        # tiny inharmonic shimmer (only audible at attack)
+        0.08 * np.sin(2*np.pi*f*2.76*t)  * np.exp(-t*40)
+    )
     env = adsr(n, a=0.005, d=0.18, s_level=0.0, r=0.08)
     out = sig[:env.size] * env[:sig.size] * 0.35
     return out
@@ -90,15 +93,19 @@ def voice_swell(chord_midis):
     return out
 
 def voice_pulse(midi):
-    """Quiet high-octave bell. Used for sub-agent stops, errors, notifications."""
+    """Small high bell — additive synthesis (no FM buzz). Same recipe as
+    the meadow chime, slightly smaller / quicker decay."""
     f = freq(midi)
-    dur = 4.5
+    dur = 3.5
     n = int(dur * SR); t = t_axis(dur)
-    fm_index = 4.0 * np.exp(-t * 1.0)
-    sig = np.sin(2*np.pi*f*t + fm_index * np.sin(2*np.pi*f*1.41*t))
-    sig += 0.10 * np.sin(2*np.pi*f*4*t) * np.exp(-t*4)
-    env = adsr(n, a=0.012, d=2.5, s_level=0.0, r=0.5)
-    out = sig[:env.size] * env[:sig.size] * 0.30
+    sig = (
+        np.sin(2*np.pi*f*t)              * np.exp(-t*0.9) +
+        0.45 * np.sin(2*np.pi*f*2.005*t) * np.exp(-t*1.4) +
+        0.16 * np.sin(2*np.pi*f*2.76*t)  * np.exp(-t*2.8) +
+        0.05 * np.sin(2*np.pi*f*4.5*t)   * np.exp(-t*5.0)
+    )
+    env = adsr(n, a=0.014, d=2.0, s_level=0.0, r=0.5)
+    out = sig[:env.size] * env[:sig.size] * 0.32
     return out
 
 # ---------- generation ----------
@@ -118,26 +125,25 @@ def render_with_pan(mono, wet, decay_s, predelay_ms, brightness, pan=0.0):
 def gen_all():
     print("[rainfall] rendering...")
 
-    # drop — 8 pitches A4..A5 in A Lydian
+    # drop — light reverb so drops feel intimate, not echoed across a hall
     drop_midis = [69, 71, 73, 75, 76, 78, 80, 81]
     for i, m in enumerate(drop_midis):
         print(f"  drop m{m}")
-        # short, intimate reverb (1.5 s) — drops should not bloom
         pan = (-0.4, -0.2, 0.0, 0.2, 0.4, 0.2, -0.2, 0.0)[i % 8]
-        st = render_with_pan(voice_drop(m), wet=0.30, decay_s=1.5,
-                             predelay_ms=20, brightness=0.45, pan=pan)
-        write_wav(OUT / "drop" / f"{i:02d}_m{m}.wav", st, target_peak=0.7)
+        st = render_with_pan(voice_drop(m), wet=0.18, decay_s=1.2,
+                             predelay_ms=15, brightness=0.45, pan=pan)
+        write_wav(OUT / "drop" / f"{i:02d}_m{m}.wav", st, target_peak=0.78)
 
-    # tap — 4 pitches in upper octave; very quiet by design
+    # tap — DRY. Almost subliminal noise pop, no echo.
     tap_midis = [81, 85, 88, 90]
     for i, m in enumerate(tap_midis):
         print(f"  tap m{m}")
         pan = (-0.5, -0.2, 0.2, 0.5)[i]
-        st = render_with_pan(voice_tap(m), wet=0.25, decay_s=1.0,
-                             predelay_ms=10, brightness=0.55, pan=pan)
-        write_wav(OUT / "tap" / f"{i:02d}_m{m}.wav", st, target_peak=0.5)
+        st = render_with_pan(voice_tap(m), wet=0.0, decay_s=0.5,
+                             predelay_ms=0, brightness=0.55, pan=pan)
+        write_wav(OUT / "tap" / f"{i:02d}_m{m}.wav", st, target_peak=0.55)
 
-    # swell — 3 lydian-safe voicings, the rare droney one
+    # swell — KEEPS heavy reverb. This is the rare droney bloom event.
     chords = [
         [69, 76, 71],         # A4 E5 B4
         [69, 73, 78],         # A4 C#5 F#5
@@ -145,19 +151,18 @@ def gen_all():
     ]
     for i, c in enumerate(chords):
         print(f"  swell {i} {c}")
-        # heavier reverb (4 s) since this is meant to bloom
-        st = render_with_pan(voice_swell(c), wet=0.55, decay_s=4.0,
-                             predelay_ms=60, brightness=0.35, pan=0.0)
-        write_wav(OUT / "swell" / f"{i:02d}.wav", st, target_peak=0.78)
+        st = render_with_pan(voice_swell(c), wet=0.52, decay_s=4.0,
+                             predelay_ms=55, brightness=0.35, pan=0.0)
+        write_wav(OUT / "swell" / f"{i:02d}.wav", st, target_peak=0.80)
 
-    # pulse — high bell for errors/sub-agent
+    # pulse — medium reverb; high bells should ring but not haunt
     pulse_midis = [81, 85, 88, 90]
     for i, m in enumerate(pulse_midis):
         print(f"  pulse m{m}")
         pan = (-0.25, 0.0, 0.0, 0.25)[i]
-        st = render_with_pan(voice_pulse(m), wet=0.45, decay_s=2.5,
-                             predelay_ms=40, brightness=0.45, pan=pan)
-        write_wav(OUT / "pulse" / f"{i:02d}_m{m}.wav", st, target_peak=0.65)
+        st = render_with_pan(voice_pulse(m), wet=0.38, decay_s=2.2,
+                             predelay_ms=35, brightness=0.45, pan=pan)
+        write_wav(OUT / "pulse" / f"{i:02d}_m{m}.wav", st, target_peak=0.70)
 
     print("[rainfall] done.")
 
