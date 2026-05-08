@@ -2,9 +2,14 @@
 """
 Claudio Symphony — control CLI.
 
+Quick on/off
+  off                              Silence everything (hooks short-circuit)
+  on                               Restore (auto-restarts drone if preset has one)
+  toggle                           Flip between on and off
+
 Setup
   install / uninstall              Manage hooks in ~/.claude/settings.json
-  status                           Show install + drone + preset state
+  status                           Show install + drone + preset state (and ON/OFF)
   start / stop                     Drone daemon (no-op for presets without one)
   regen [preset]                   Re-render samples for a preset
 
@@ -190,6 +195,39 @@ def cmd_stop():
     except Exception as e:
         print(f"stop failed: {e}")
 
+# ---------- on/off ----------
+
+def cmd_off():
+    cfg = load_config()
+    if cfg.get("muted"):
+        print("🔇 already off")
+        return
+    cfg["muted"] = True
+    save_config(cfg)
+    # stop drone if running
+    if drone_pid():
+        cmd_stop()
+    # kill any in-flight afplay so existing tails go silent now, not at end
+    subprocess.run(["pkill", "-f", "afplay"], check=False)
+    print("🔇 OFF — run `claudio on` to restore")
+
+def cmd_on():
+    cfg = load_config()
+    cfg.pop("muted", None)
+    save_config(cfg)
+    name = cfg.get("preset", "cathedral")
+    preset = load_preset(name)
+    # auto-start drone if active preset has one
+    if preset and preset.get("drone") and not drone_pid():
+        cmd_start()
+    print(f"🔊 ON — preset: {name}")
+
+def cmd_toggle():
+    if load_config().get("muted"):
+        cmd_on()
+    else:
+        cmd_off()
+
 # ---------- status ----------
 
 def cmd_status():
@@ -205,6 +243,8 @@ def cmd_status():
     name = cfg.get("preset", "cathedral")
     preset = load_preset(name)
     pid = drone_pid()
+    muted = cfg.get("muted", False)
+    print(f"state:           {'🔇 OFF' if muted else '🔊 ON'}")
     print(f"active preset:   {name}{' (✓)' if preset else ' (NOT FOUND)'}")
     if preset:
         print(f"  description:   {preset.get('description','')}")
@@ -588,6 +628,9 @@ def main(argv):
     elif cmd == "mute":                 cmd_mute(args)
     elif cmd == "unmute":               cmd_unmute(args)
     elif cmd == "tune":                 cmd_tune()
+    elif cmd == "off":                  cmd_off()
+    elif cmd == "on":                   cmd_on()
+    elif cmd == "toggle":               cmd_toggle()
     else:
         print(__doc__)
 

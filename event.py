@@ -354,6 +354,10 @@ def handle(payload):
     session = payload.get("session_id", "")
     cwd = payload.get("cwd", "")
 
+    # Global mute — short-circuit before any work. Toggled via `claudio off/on`.
+    if read_config().get("muted"):
+        return
+
     preset_name, source = resolve_preset(session, cwd)
     preset = load_preset(preset_name)
     update_session_record(session, cwd, event, preset_name, source)
