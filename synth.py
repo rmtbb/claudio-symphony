@@ -14,7 +14,9 @@ import numpy as np
 
 SR = 44100
 HERE = Path(__file__).resolve().parent
-SAMPLES = HERE / "samples"
+# CLAUDIO_SAMPLES_DIR lets `presets/cathedral/render.py` redirect output
+# into its own samples/ folder. Falls back to the project-root samples/ dir.
+SAMPLES = Path(os.environ["CLAUDIO_SAMPLES_DIR"]) if os.environ.get("CLAUDIO_SAMPLES_DIR") else (HERE / "samples")
 
 # A = 432 Hz tuning. Equal-tempered upper voices off this root.
 A4 = 432.0
@@ -335,10 +337,16 @@ def gen_all():
                                 predelay_ms=50, brightness=0.6, pan=0.0)
         write_wav(SAMPLES / "sparkle" / f"{i:02d}.wav", st, target_peak=0.72)
 
+    # Pad voicings — Stop/SessionEnd/PreCompact rotate through these.
+    # First three are A-rooted variants (root, sus2-flavored, A maj triad with
+    # added 6 and 9). Fourth is a first-inversion arrangement so closing pads
+    # occasionally land on a less-final voicing — feels like the work isn't
+    # over so much as resting.
     chords = [
-        [69, 76, 71],
-        [69, 73, 76],
-        [69, 75, 78, 81],
+        [69, 76, 71],         # A4 E5 B4 — open, two stacked fifths
+        [69, 73, 76],         # A4 C#5 E5 — root-position triad, the home
+        [69, 75, 78, 81],     # A4 D#5 F#5 A5 — Lydian color (raised 4)
+        [73, 76, 81, 83],     # C#5 E5 A5 B5 — first inversion + 9 (floating)
     ]
     for i, c in enumerate(chords):
         print(f"[pad] {i} {c}...")

@@ -28,6 +28,21 @@ from synth import (
     reverb_stereo, to_stereo, write_wav,
 )
 
+# === reverb_scale monkeypatch ===
+# Reads top-level reverb_scale from this preset's preset.json (default 1.0)
+# and multiplies every reverb_stereo() wet by it. Lets `claudio preset reverb`
+# tune ALL voices' reverb in one shot without editing the call sites.
+import json as _json
+import synth as _synth
+_PRESET_CFG = _json.loads((HERE / "preset.json").read_text())
+_REVERB_SCALE = float(_PRESET_CFG.get("reverb_scale", 1.0))
+_orig_reverb_stereo = _synth.reverb_stereo
+def reverb_stereo(mono, **kwargs):
+    if "wet" in kwargs:
+        kwargs["wet"] = max(0.0, min(1.0, float(kwargs["wet"]) * _REVERB_SCALE))
+    return _orig_reverb_stereo(mono, **kwargs)
+
+
 OUT = HERE / "samples"
 for sub in ("mallet", "kalimba", "chime", "bird", "wood", "bloom", "cluster"):
     (OUT / sub).mkdir(parents=True, exist_ok=True)
@@ -289,9 +304,13 @@ def gen_all():
         write_wav(OUT / "wood" / f"{i:02d}.wav", st, target_peak=0.55)
 
     # bloom — pad swell, KEEPS heavier reverb (it's the bloom voice)
+    # Five voicings rotate so session-end blooms don't always resolve identically.
+    # Inversions create motion/voice-leading variety without leaving A major.
     chords = [
-        [57, 61, 64, 69],     # A3 C#4 E4 A4    — root position
-        [57, 64, 71, 73],     # A3 E4 B4 C#5    — open fifth + 9 + 3 (bright)
+        [57, 61, 64, 69],     # A3 C#4 E4 A4    — root position (the home)
+        [61, 64, 69, 73],     # C#4 E4 A4 C#5   — first inversion (lifts brighter)
+        [64, 69, 73, 76],     # E4 A4 C#5 E5    — second inversion (open, floating)
+        [57, 64, 71, 73],     # A3 E4 B4 C#5    — open fifth + 9 + 3 (bright add9)
         [57, 61, 66, 69],     # A3 C#4 F#4 A4   — A6 chord (warm sweet)
     ]
     for i, c in enumerate(chords):

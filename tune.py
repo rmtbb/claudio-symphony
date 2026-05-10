@@ -2,10 +2,12 @@
 """
 Claudio Symphony — interactive tuner (curses TUI).
 
-Three panes (TAB to cycle):
+Four panes (TAB to cycle):
   Voices    — gain + MIOI per voice; SPACE plays a sample from that voice.
   Events    — event → voice mapping (incl. by-tool overrides + on_failure).
-              SPACE plays the mapped voice; m mutes/unmutes.
+              SPACE plays the mapped voice; m mutes/unmutes; d cycles delay.
+  Settings  — master/drone gain, reverb scale (per-preset), scale override,
+              quant on/bpm/grid, active song. ←/→ adjusts.
   Sessions  — active sessions (last 4h). ←/→ cycles a per-session preset pin.
 
 Globals:
@@ -16,7 +18,10 @@ Globals:
   Q — quit WITHOUT saving (capital Q, discards edits)
 
 In Voices pane, ←/→ adjusts the focused column. Use g (gain) or t (mioi/time)
-to switch which column ←/→ tweaks.
+to switch which column ←/→ tweaks. In Events pane, 'd' on a row cycles the
+per-event delay/echo (off → subtle → medium → long → echo).
+Reverb_scale changes require regen; the TUI flags it on save and you can run
+`claudio regen <preset>` (or 'r' inside the TUI) to apply.
 """
 import curses, json, time, os, sys, subprocess, math, random
 from pathlib import Path
@@ -49,7 +54,30 @@ def list_samples(preset_name, voice_dir):
 # ---------- TUI ----------
 
 class TuneUI:
-    PANE_VOICES, PANE_EVENTS, PANE_SESSIONS = 0, 1, 2
+    PANE_VOICES, PANE_EVENTS, PANE_SETTINGS, PANE_SESSIONS = 0, 1, 2, 3
+    N_PANES = 4
+
+    # Scale names (mirror SCALES in event.py — read at runtime to avoid drift).
+    @staticmethod
+    def _scale_names():
+        try:
+            sys.path.insert(0, str(HERE))
+            import event as _ev
+            return list(_ev.SCALES.keys())
+        except Exception:
+            return ["A_major", "A_pent", "A_lydian", "A_dorian", "A_aeolian",
+                    "A_in_sen", "A_phrygian", "A_lydian_pent", "A_yo", "A_hijaz"]
+
+    GRID_PRESETS = [(0.0625, "1/64"), (0.125, "1/32"), (0.25, "1/16"),
+                    (0.5, "1/8"),     (1.0, "1/4"),    (2.0, "1/2"),
+                    (4.0, "whole")]
+    DELAY_PRESETS = [
+        (None, "off"),
+        ({"ms": 220, "feedback": 0.20, "count": 2}, "subtle"),
+        ({"ms": 320, "feedback": 0.30, "count": 3}, "medium"),
+        ({"ms": 500, "feedback": 0.40, "count": 4}, "long"),
+        ({"ms": 700, "feedback": 0.50, "count": 5}, "echo!"),
+    ]
 
     def __init__(self, stdscr):
         self.stdscr = stdscr
@@ -59,14 +87,18 @@ class TuneUI:
         if self.preset_name not in names and names:
             self.preset_name = names[0]
         self.preset = self._load_preset(self.preset_name)
+        # Track baseline reverb_scale so we know if a regen is needed on save.
+        self._baseline_reverb_scale = float(self.preset.get("reverb_scale", 1.0))
 
         self.preset_dirty = False
         self.config_dirty = False
+        self.regen_needed = False
 
         self.pane = self.PANE_VOICES
         self.row_v = 0
         self.col_v = 0  # 0=gain 1=mioi
         self.row_e = 0
+        self.row_g = 0   # settings row
         self.row_s = 0
 
         self.message = ""
@@ -111,6 +143,62 @@ class TuneUI:
         if m is None:
             m = self.preset.get("master_gain", 0.5)
         return float(m)
+
+    def settings_rows(self):
+        """Live list of (label, kind, value_str, slider_or_marker).
+        kind ∈ {"float01", "float_reverb", "scale", "songq", "songpick", "bool", "bpm", "grid"}.
+        Used for both rendering and ←/→ dispatch.
+        """
+        cfg = self.config
+        preset = self.preset
+        rows = []
+
+        master = self.master_gain()
+        rows.append(("master gain", "master", master, self._slider(master) + f" {master:.2f}"))
+
+        drone = float(cfg.get("drone_gain", preset.get("drone_gain", 0.0)))
+        rows.append(("drone gain", "drone", drone, self._slider(drone) + f" {drone:.2f}"))
+
+        rs = float(preset.get("reverb_scale", 1.0))
+        rs_norm = rs / 2.0   # 0..2 scaled to 0..1 slider
+        marker = self._slider(rs_norm) + f" {rs:.2f}"
+        if abs(rs - self._baseline_reverb_scale) > 1e-3:
+            marker += "  ● regen on save"
+        rows.append(("reverb scale", "reverb", rs, marker))
+
+        scale_now = cfg.get("scale_override")
+        rows.append(("scale override", "scale", scale_now, scale_now or "(off — preset default)"))
+
+        q = cfg.get("quant", {}) or {}
+        en = bool(q.get("enabled", False))
+        rows.append(("quant", "quant_en", en, "ON" if en else "off"))
+
+        bpm = float(q.get("bpm", 120.0))
+        rows.append(("quant bpm", "quant_bpm", bpm, f"{bpm:.1f}"))
+
+        grid = float(q.get("grid", 0.5))
+        # find label for this grid
+        glabel = next((lbl for v, lbl in self.GRID_PRESETS if abs(v - grid) < 1e-3), f"{grid}")
+        rows.append(("quant grid", "quant_grid", grid, glabel))
+
+        # song state — read from state/song.json
+        song_state = load_json(STATE / "song.json", {})
+        active_song = song_state.get("global")
+        rows.append(("active song", "song", active_song, active_song or "(off — Markov picker)"))
+
+        return rows
+
+    def _list_song_names(self):
+        d = HERE / "songs"
+        if not d.exists(): return []
+        return sorted(p.stem for p in d.iterdir() if p.suffix == ".json")
+
+    def _event_delay(self, ev):
+        spec = self.preset.get("events", {}).get(ev, {}) or {}
+        if not isinstance(spec, dict): return None
+        eff = spec.get("effect")
+        if not isinstance(eff, dict): return None
+        return eff.get("delay")
 
     # ---------- drawing ----------
 
@@ -176,6 +264,7 @@ class TuneUI:
         col_hint = "[gain]  press t for mioi" if self.col_v == 0 else "gain   [mioi]  press g for gain"
         header = f" Voices — {col_hint} "
         self._addstr(y, 1, header.ljust(w - 2, "─"), attr); y += 1
+        now = time.time()
         for i, (name, cfg) in enumerate(self.voices()):
             sel = (self.pane == self.PANE_VOICES and self.row_v == i)
             arrow = "▶" if sel else " "
@@ -184,17 +273,31 @@ class TuneUI:
             gain_attr = curses.A_BOLD if (sel and self.col_v == 0) else 0
             mioi_attr = curses.A_BOLD if (sel and self.col_v == 1) else 0
             row_attr = curses.A_REVERSE if sel else 0
-            line = f" {arrow} {name:<10}  gain {self._slider(gain)} {gain:>4.2f}    mioi {self._mioi_bar(mioi)} {mioi:>6.2f}s"
+            # Last-fired indicator: ◉ < 0.5s, ● < 1.5s, ◎ < 3s, · older. Reads
+            # the per-voice last-<voice>.txt the event hook touches on every fire.
+            try:
+                last_path = STATE / self.preset_name / f"last-{name}.txt"
+                last_ts = float(last_path.read_text().strip()) if last_path.exists() else 0.0
+            except Exception:
+                last_ts = 0.0
+            age = now - last_ts if last_ts else 1e9
+            if   age < 0.5: dot = "◉"
+            elif age < 1.5: dot = "●"
+            elif age < 3.0: dot = "◎"
+            else:           dot = "·"
+            line = f" {arrow} {name:<10} {dot}  gain {self._slider(gain)} {gain:>4.2f}    mioi {self._mioi_bar(mioi)} {mioi:>6.2f}s"
             self._addstr(y, 1, line.ljust(w-2), row_attr | (gain_attr if self.col_v == 0 else mioi_attr))
             y += 1
         y += 1
 
-        # Events pane
+        # Events pane (now also shows per-event delay/echo column when set)
         attr = curses.A_BOLD | (curses.A_REVERSE if self.pane == self.PANE_EVENTS else 0)
-        self._addstr(y, 1, " Events ".ljust(w - 2, "─"), attr); y += 1
+        self._addstr(y, 1, " Events  (d cycles delay) ".ljust(w - 2, "─"), attr); y += 1
         ev_rows = self.events_flat()
-        # render with simple scroll if too many rows
-        max_e_rows = max(4, h - y - 6 - len(self.sessions()))
+        # render with simple scroll if too many rows. The settings pane below
+        # eats some space too; leave a budget per pane.
+        n_settings = len(self.settings_rows())
+        max_e_rows = max(4, h - y - 6 - n_settings - len(self.sessions()))
         start = max(0, self.row_e - max_e_rows + 2) if len(ev_rows) > max_e_rows else 0
         for i in range(start, min(start + max_e_rows, len(ev_rows))):
             ev, key, val = ev_rows[i]
@@ -203,7 +306,26 @@ class TuneUI:
             indent = "  " if key == "default" else "      · "
             label = ev if key == "default" else key
             v = "(silent)" if val is None else val
-            line = f" {arrow}{indent}{label:<22}→ {v}"
+            # Append delay info if present (delays are per-event, not per-key,
+            # so only show on the default row)
+            delay_str = ""
+            if key == "default":
+                d = self._event_delay(ev)
+                if d:
+                    delay_str = f"  · echo {d.get('ms','?')}ms ×{d.get('count','?')}"
+            line = f" {arrow}{indent}{label:<22}→ {v}{delay_str}"
+            row_attr = curses.A_REVERSE if sel else 0
+            self._addstr(y, 1, line.ljust(w-2), row_attr)
+            y += 1
+        y += 1
+
+        # Settings pane
+        attr = curses.A_BOLD | (curses.A_REVERSE if self.pane == self.PANE_SETTINGS else 0)
+        self._addstr(y, 1, " Settings ".ljust(w - 2, "─"), attr); y += 1
+        for i, (label, kind, val, marker) in enumerate(self.settings_rows()):
+            sel = (self.pane == self.PANE_SETTINGS and self.row_g == i)
+            arrow = "▶" if sel else " "
+            line = f" {arrow} {label:<16}  {marker}"
             row_attr = curses.A_REVERSE if sel else 0
             self._addstr(y, 1, line.ljust(w-2), row_attr)
             y += 1
@@ -236,8 +358,8 @@ class TuneUI:
         if self.message and time.time() < self.message_until:
             self._addstr(h - 2, 1, self.message.ljust(w - 2), curses.A_DIM)
 
-        # Footer
-        keys = " TAB pane │ ↑↓ row │ ←→ value │ g/t col │ SPC play │ p preset │ m mute │ s save │ q save+quit │ Q discard "
+        # Footer — split across two lines so all keys fit at narrower widths
+        keys = " TAB pane │ ↑↓ row │ ←→ value │ g/t col │ SPC play │ d delay │ m mute │ p preset │ s save │ r regen │ q save+quit │ Q discard "
         self._addstr(h - 1, 0, keys.center(w, "─"), curses.A_BOLD)
 
         self.stdscr.refresh()
@@ -300,6 +422,125 @@ class TuneUI:
             self.status(f"muted {ev}/{key}")
         self.preset_dirty = True
 
+    def adjust_setting(self, row, delta):
+        """Mutates self.config / self.preset for the focused settings row.
+        delta is +1 or -1 from arrow keys."""
+        rows = self.settings_rows()
+        if not (0 <= row < len(rows)): return
+        label, kind, val, _ = rows[row]
+        if kind == "master":
+            self.adjust_master(0.05 * delta)
+        elif kind == "drone":
+            cur = float(self.config.get("drone_gain", self.preset.get("drone_gain", 0.0)))
+            self.config["drone_gain"] = round(max(0.0, min(1.0, cur + 0.05 * delta)), 3)
+            self.config_dirty = True
+        elif kind == "reverb":
+            cur = float(self.preset.get("reverb_scale", 1.0))
+            new = round(max(0.0, min(2.0, cur + 0.10 * delta)), 3)
+            self.preset["reverb_scale"] = new
+            self.preset_dirty = True
+            if abs(new - self._baseline_reverb_scale) > 1e-3:
+                self.regen_needed = True
+            else:
+                self.regen_needed = False
+        elif kind == "scale":
+            choices = [None] + self._scale_names()
+            cur = self.config.get("scale_override")
+            try: idx = choices.index(cur)
+            except ValueError: idx = 0
+            new = choices[(idx + delta) % len(choices)]
+            if new is None:
+                self.config.pop("scale_override", None)
+            else:
+                self.config["scale_override"] = new
+            self.config_dirty = True
+        elif kind == "quant_en":
+            q = self.config.setdefault("quant", {})
+            q["enabled"] = not bool(q.get("enabled", False))
+            self.config_dirty = True
+        elif kind == "quant_bpm":
+            q = self.config.setdefault("quant", {})
+            cur = float(q.get("bpm", 120.0))
+            step = 5.0 if delta > 0 else -5.0
+            q["bpm"] = round(max(30.0, min(300.0, cur + step)), 1)
+            self.config_dirty = True
+        elif kind == "quant_grid":
+            q = self.config.setdefault("quant", {})
+            cur = float(q.get("grid", 0.5))
+            vals = [v for v, _ in self.GRID_PRESETS]
+            try: idx = vals.index(cur)
+            except ValueError: idx = vals.index(0.5)
+            q["grid"] = vals[(idx + delta) % len(vals)]
+            self.config_dirty = True
+        elif kind == "song":
+            choices = [None] + self._list_song_names()
+            sf = STATE / "song.json"
+            song_state = load_json(sf, {})
+            cur = song_state.get("global")
+            try: idx = choices.index(cur)
+            except ValueError: idx = 0
+            new = choices[(idx + delta) % len(choices)]
+            if new is None:
+                song_state.pop("global", None)
+            else:
+                song_state["global"] = new
+                song_state.setdefault("positions", {}).setdefault(new, 0)
+            save_json(sf, song_state)
+            self.status(f"song → {new or '(off)'}")
+
+    def cycle_event_delay(self, row, delta=1):
+        """'d' key cycles through DELAY_PRESETS for the selected event row.
+        Delay is keyed on the event NAME (not by-tool / on_failure), so we
+        ignore non-default rows by walking up to the parent event."""
+        rows = self.events_flat()
+        if not (0 <= row < len(rows)): return
+        ev, key, val = rows[row]
+        # Find or create the event spec
+        spec = self.preset.setdefault("events", {}).setdefault(ev, {"default": None})
+        if not isinstance(spec, dict):
+            spec = {"default": spec}
+            self.preset["events"][ev] = spec
+        cur = self._event_delay(ev)
+        # Find current index in DELAY_PRESETS
+        cur_idx = 0
+        for i, (preset_val, _) in enumerate(self.DELAY_PRESETS):
+            if cur == preset_val:
+                cur_idx = i; break
+            if cur and isinstance(preset_val, dict) and \
+               cur.get("ms") == preset_val.get("ms") and \
+               cur.get("count") == preset_val.get("count"):
+                cur_idx = i; break
+        new_idx = (cur_idx + delta) % len(self.DELAY_PRESETS)
+        new_val, new_label = self.DELAY_PRESETS[new_idx]
+        if new_val is None:
+            if "effect" in spec and "delay" in spec["effect"]:
+                spec["effect"].pop("delay", None)
+                if not spec["effect"]:
+                    spec.pop("effect", None)
+        else:
+            spec.setdefault("effect", {})["delay"] = dict(new_val)
+        self.preset_dirty = True
+        self.status(f"{ev} delay → {new_label}")
+
+    def trigger_regen(self):
+        """Run `python3 presets/<preset>/render.py` in the background. Tells the
+        user to wait. Used to apply reverb_scale changes after save."""
+        rp = PRESETS / self.preset_name / "render.py"
+        if not rp.exists():
+            self.status("no render.py for this preset"); return
+        self.status(f"regenerating {self.preset_name} samples (background)...", dur=8.0)
+        try:
+            subprocess.Popen(
+                ["/usr/bin/env", "python3", str(rp)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True, close_fds=True,
+            )
+        except Exception as e:
+            self.status(f"regen failed: {e}")
+            return
+        self.regen_needed = False
+        self._baseline_reverb_scale = float(self.preset.get("reverb_scale", 1.0))
+
     def cycle_session_pin(self, row, delta):
         sessions = self.sessions()
         if not (0 <= row < len(sessions)): return
@@ -330,10 +571,12 @@ class TuneUI:
         new = names[(idx + 1) % len(names)]
         self.preset_name = new
         self.preset = self._load_preset(new)
+        self._baseline_reverb_scale = float(self.preset.get("reverb_scale", 1.0))
+        self.regen_needed = False
         self.config["preset"] = new
         self.config.pop("master_gain", None)
         self.config_dirty = True
-        self.row_v = self.row_e = self.row_s = 0
+        self.row_v = self.row_e = self.row_g = self.row_s = 0
         self.status(f"preset → {new}")
 
     def play_voice(self, voice):
@@ -376,7 +619,10 @@ class TuneUI:
             wrote.append("config.json")
         self._saved_at = time.time()
         if wrote:
-            self.status(f"✓ saved {' + '.join(wrote)}", dur=3.0)
+            msg = f"✓ saved {' + '.join(wrote)}"
+            if self.regen_needed:
+                msg += "  · reverb changed — press r to regen"
+            self.status(msg, dur=4.0)
         else:
             self.status("nothing to save")
 
@@ -399,17 +645,21 @@ class TuneUI:
                 self.save()
             return False
         if key == ord('\t'):
-            self.pane = (self.pane + 1) % 3; return True
+            self.pane = (self.pane + 1) % self.N_PANES; return True
         if key in (curses.KEY_BTAB,):
-            self.pane = (self.pane - 1) % 3; return True
+            self.pane = (self.pane - 1) % self.N_PANES; return True
         if key == ord('s'): self.save(); return True
+        if key == ord('r'): self.trigger_regen(); return True
         if key == ord('p'): self.cycle_preset(); return True
         if key == ord('m') and self.pane == self.PANE_EVENTS:
             self.mute_event(self.row_e); return True
+        if key == ord('d') and self.pane == self.PANE_EVENTS:
+            self.cycle_event_delay(self.row_e, +1); return True
 
         if key == curses.KEY_UP:
             if   self.pane == self.PANE_VOICES:   self.row_v = max(0, self.row_v - 1)
             elif self.pane == self.PANE_EVENTS:   self.row_e = max(0, self.row_e - 1)
+            elif self.pane == self.PANE_SETTINGS: self.row_g = max(0, self.row_g - 1)
             elif self.pane == self.PANE_SESSIONS: self.row_s = max(0, self.row_s - 1)
             return True
         if key == curses.KEY_DOWN:
@@ -417,17 +667,21 @@ class TuneUI:
                 self.row_v = min(max(0, len(self.voices()) - 1), self.row_v + 1)
             elif self.pane == self.PANE_EVENTS:
                 self.row_e = min(max(0, len(self.events_flat()) - 1), self.row_e + 1)
+            elif self.pane == self.PANE_SETTINGS:
+                self.row_g = min(max(0, len(self.settings_rows()) - 1), self.row_g + 1)
             elif self.pane == self.PANE_SESSIONS:
                 self.row_s = min(max(0, len(self.sessions()) - 1), self.row_s + 1)
             return True
         if key == curses.KEY_LEFT:
             if   self.pane == self.PANE_VOICES:   self.adjust_voice(self.row_v, self.col_v, -1)
             elif self.pane == self.PANE_EVENTS:   self.cycle_event_voice(self.row_e, -1)
+            elif self.pane == self.PANE_SETTINGS: self.adjust_setting(self.row_g, -1)
             elif self.pane == self.PANE_SESSIONS: self.cycle_session_pin(self.row_s, -1)
             return True
         if key == curses.KEY_RIGHT:
             if   self.pane == self.PANE_VOICES:   self.adjust_voice(self.row_v, self.col_v, +1)
             elif self.pane == self.PANE_EVENTS:   self.cycle_event_voice(self.row_e, +1)
+            elif self.pane == self.PANE_SETTINGS: self.adjust_setting(self.row_g, +1)
             elif self.pane == self.PANE_SESSIONS: self.cycle_session_pin(self.row_s, +1)
             return True
         if key == ord('g') and self.pane == self.PANE_VOICES:

@@ -1,0 +1,26 @@
+{
+  "name": "hum",
+  "description": "Warm hand-bell ensemble. A major pentatonic. Polite, calming bells with a soft pluck for ticks. Like a tea ceremony in a sunlit room.",
+  "drone": null,
+  "master_gain": 0.46,
+  "drone_gain": 0.0,
+  "phrase_roots": [9, 4],
+  "scale_pitches": [69, 71, 73, 76, 78, 81, 83, 85, 88],
+  "voices": {
+    "hand_bell": { "dir": "hand_bell", "mioi": 0.4, "gain": 0.40 },
+    "soft_pluck": { "dir": "soft_pluck", "mioi": 0.30, "gain": 0.42, "rate_jitter": true },
+    "brush": { "dir": "brush", "mioi": 0.06, "gain": 0.30 },
+    "bell_pair": { "dir": "bell_pair", "mioi": 12.0, "gain": 0.40 }
+  },
+  "events": {
+    "PreToolUse":       { "default": "brush" },
+    "PostToolUse":      { "default": "soft_pluck", "on_failure": "hand_bell" },
+    "Stop":             { "default": "hand_bell" },
+    "SessionStart":     { "default": "bell_pair" },
+    "SessionEnd":       { "default": "hand_bell" },
+    "SubagentStop":     { "default": "hand_bell" },
+    "UserPromptSubmit": { "default": "brush" },
+    "Notification":     { "default": "hand_bell" },
+    "PreCompact":       { "default": "bell_pair" }
+  }
+}

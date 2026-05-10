@@ -16,7 +16,11 @@ Setup
 Presets
   preset list                      Available presets
   preset use <name>                Switch global default preset (live)
+  preset use default               Switch to the shipped default preset (meadow)
   preset current                   Print active preset
+  preset reset [name]              Restore preset.json from preset.default.json
+  reset                            Full reset: defaults preset + master gain,
+                                   restore every preset, clear songs/quant/pins
 
 Per-session routing
   sessions                         List active sessions (last 4h)
@@ -38,11 +42,46 @@ Live tuning
   mute <event>[:<tool>]            Set mapping to silent
   unmute <event>[:<tool>] [voice]  Restore mapping (default: first voice)
   test [voice]                     Walk all events of active preset
+  demo                             60-second showcase of the active preset
+  audition                         Hear every preset, optionally pick one
+  status-line                      Print one-line live state (for tmux/etc.)
+
+Adaptive routing (extends `rule add`)
+  rule add <pattern> <preset> --time HH:MM-HH:MM      Time-of-day rule
+  rule add * <preset> --idle-after <seconds>          Idle-only rule
+
+Scale & effect tuning
+  scale list                                          Available scales (A_pent, A_lydian, etc.)
+  scale use <name> / scale off                        Global scale override
+  session scale <id|idx> <name>                       Pin a scale to one session
+  preset reverb <0..2>                                Active preset reverb scale (auto-regen)
+  event delay <Event> <ms> [feedback] [count]         Per-event delay echo at trigger
+  event delay <Event> off                             Remove that event's echo
+  event show                                          Show current event effects
+
+MIDI songs + quantization
+  song import <file.mid> [name]    Import a MIDI file (Mario, Sonic, anything)
+  song import-dir <folder>         Import every *.mid in a folder
+  song list                        List imported songs (* = global default)
+  song use <name>                  Set as global default
+  song off                         Clear global default → Markov picker
+  song current                     Show resolution + positions
+  song reset [name]                Restart song's pointer (default: global)
+  song channel <name> <lead|all|N> Pick which MIDI channel drives the melody
+  song info <name>                 Show channel summary + detected lead
+  preset song <preset> <name|off>  Per-preset default song (overrides global)
+  session song <id|idx> <name|off> Pin a song to one session (overrides preset)
+  quant on / off / status          Toggle master quantization
+  tempo <bpm>                      Set master quantization tempo
+  grid <subdivision>               Beats per cell (0.25=16th, 0.5=8th, 1=quarter)
 """
 import os, sys, json, time, fnmatch, subprocess, signal
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import song as song_mod  # noqa: E402
+
 PRESETS = HERE / "presets"
 STATE = HERE / "state"
 LOGS = HERE / "logs"
@@ -75,9 +114,17 @@ def save_json(p, d):
     tmp.write_text(json.dumps(d, indent=2) + "\n")
     tmp.rename(p)
 
+DEFAULT_PRESET = "meadow"
+DEFAULT_CONFIG = {
+    "preset": DEFAULT_PRESET,
+    "master_gain": 0.55,
+    "drone_gain": 0.0,
+    "quant": {"enabled": False, "bpm": 120.0, "grid": 0.5},
+}
+
 def load_config(): return load_json(CONFIG, {})
 def save_config(d): save_json(CONFIG, d)
-def active_preset_name(): return load_config().get("preset", "cathedral")
+def active_preset_name(): return load_config().get("preset", DEFAULT_PRESET)
 def list_preset_names():
     if not PRESETS.exists(): return []
     return sorted(d.name for d in PRESETS.iterdir() if (d / "preset.json").exists())
@@ -215,7 +262,7 @@ def cmd_on():
     cfg = load_config()
     cfg.pop("muted", None)
     save_config(cfg)
-    name = cfg.get("preset", "cathedral")
+    name = cfg.get("preset", "meadow")
     preset = load_preset(name)
     # auto-start drone if active preset has one
     if preset and preset.get("drone") and not drone_pid():
@@ -240,7 +287,7 @@ def cmd_status():
                 if h.get(MARKER):
                     events.append(ev); break
     cfg = load_config()
-    name = cfg.get("preset", "cathedral")
+    name = cfg.get("preset", "meadow")
     preset = load_preset(name)
     pid = drone_pid()
     muted = cfg.get("muted", False)
@@ -263,6 +310,17 @@ def cmd_status():
     sessions = load_json(SESSIONS_FILE, {"active": {}}).get("active", {})
     fresh = {sid: s for sid, s in sessions.items() if s.get("last_seen", 0) > time.time() - 4*3600}
     print(f"active sessions: {len(fresh)} (last 4h)  (run `claudio sessions` for details)")
+    g = song_mod.global_song()
+    if g:
+        n_total = len(song_mod.notes_for(g))
+        s = song_mod.load_song(g) or {}
+        print(f"song (global):   {g} ({song_mod.position(g)}/{n_total} notes, bpm={s.get('bpm')})")
+    else:
+        print(f"song (global):   (off — Markov picker)")
+    if preset and preset.get("song"):
+        print(f"  preset song:   {preset['song']} (overrides global for {name})")
+    q = song_mod.quant_settings()
+    print(f"quant:           {'ON' if q['enabled'] else 'off'}  tempo={q['bpm']} bpm  grid={q['grid']} beats")
     print(f"event log:       {LOGS / 'event.log'}")
 
 # ---------- presets ----------
@@ -279,9 +337,35 @@ def cmd_preset(args):
         return
     if args[0] in ("current", "show"):
         print(active_preset_name()); return
+    if args[0] == "song":
+        if len(args) < 3:
+            print("usage: claudio preset song <preset> <song-name|off>"); return
+        pname, song_name = args[1], args[2]
+        preset = load_preset(pname)
+        if preset is None:
+            print(f"unknown preset '{pname}'"); return
+        if song_name in ("off", "none", "-"):
+            preset.pop("song", None)
+            save_preset(pname, preset)
+            print(f"preset '{pname}' song cleared")
+            return
+        if not song_mod.has_song(song_name):
+            print(f"unknown song '{song_name}'. available: {', '.join(song_mod.list_songs()) or '(none)'}")
+            return
+        preset["song"] = song_name
+        save_preset(pname, preset)
+        print(f"preset '{pname}' song → {song_name}")
+        return
+    if args[0] == "reset":
+        target = args[1] if len(args) > 1 else active_preset_name()
+        return cmd_preset_reset(target)
+    if args[0] == "reverb":
+        return cmd_preset_reverb(args[1:])
     if args[0] in ("use", "set", "switch"):
         if len(args) < 2: print("usage: claudio preset use <name>"); return
         name = args[1]
+        if name == "default":
+            name = DEFAULT_PRESET
         if not (PRESETS / name / "preset.json").exists():
             print(f"unknown preset '{name}'. available: {', '.join(list_preset_names())}")
             return
@@ -298,6 +382,57 @@ def cmd_preset(args):
             print("(starting drone for new preset)"); cmd_start()
         return
     print(f"unknown preset subcommand: {args[0]}")
+
+# ---------- reset ----------
+
+def cmd_preset_reset(name):
+    src = PRESETS / name / "preset.default.json"
+    dst = PRESETS / name / "preset.json"
+    if not src.exists():
+        print(f"no shipped default for '{name}' (looking for {src.name})")
+        return
+    dst.write_bytes(src.read_bytes())
+    print(f"preset '{name}' restored from {src.name}")
+
+
+def cmd_reset(args):
+    """Full reset to shipped defaults — equivalent of a fresh install
+    state. Asks for confirmation unless --yes is passed."""
+    confirm = ("--yes" in args) or ("-y" in args)
+    if not confirm:
+        print("This will:")
+        print(f"  · restore preset.json for ALL presets from preset.default.json")
+        print(f"  · rewrite config.json to shipped defaults "
+              f"(preset={DEFAULT_PRESET}, master_gain=0.55, drone_gain=0.0)")
+        print(f"  · clear song positions, channel overrides, global song")
+        print(f"  · clear session pins (sessions.json) and cwd rules (rules.json)")
+        print(f"  · NOT touch installed hooks, samples, imported songs, or logs")
+        print()
+        print("Re-run with --yes to confirm: claudio reset --yes")
+        return
+    # restore presets
+    for name in list_preset_names():
+        cmd_preset_reset(name)
+    # config
+    save_config(dict(DEFAULT_CONFIG))
+    print(f"config.json → shipped defaults")
+    # song state
+    song_state = STATE / "song.json"
+    if song_state.exists(): song_state.unlink()
+    print(f"song state cleared")
+    # session pins
+    if SESSIONS_FILE.exists(): SESSIONS_FILE.unlink()
+    if RULES_FILE.exists(): RULES_FILE.unlink()
+    print(f"session pins + cwd rules cleared")
+    # bounce drone
+    if drone_pid():
+        cmd_stop()
+    preset = load_preset(DEFAULT_PRESET)
+    if preset and preset.get("drone"):
+        cmd_start()
+    print()
+    print(f"✓ reset complete — active preset: {DEFAULT_PRESET}")
+
 
 # ---------- sessions / rules ----------
 
@@ -355,6 +490,45 @@ def cmd_session(args):
         save_json(SESSIONS_FILE, d)
         print(f"pinned {sid[:8]} → {preset}")
         return
+    if sub == "scale":
+        if len(rest) < 2:
+            print("usage: claudio session scale <id|index> <scale|off>"); return
+        sid = _resolve_session(rest[0])
+        if not sid: print(f"no session matches '{rest[0]}'"); return
+        d = load_json(SESSIONS_FILE, {"active": {}})
+        rec = d.setdefault("active", {}).setdefault(sid, {})
+        target = rest[1]
+        if target in ("off", "none", "-"):
+            rec.pop("scale_override", None)
+            save_json(SESSIONS_FILE, d)
+            print(f"session {sid[:8]} scale cleared")
+            return
+        if target not in _scale_names():
+            print(f"unknown scale '{target}'. available: {', '.join(_scale_names())}")
+            return
+        rec["scale_override"] = target
+        save_json(SESSIONS_FILE, d)
+        print(f"session {sid[:8]} scale → {target}")
+        return
+    if sub == "song":
+        if len(rest) < 2:
+            print("usage: claudio session song <id|index> <song-name|off>"); return
+        sid = _resolve_session(rest[0])
+        if not sid: print(f"no session matches '{rest[0]}'"); return
+        d = load_json(SESSIONS_FILE, {"active": {}})
+        rec = d.setdefault("active", {}).setdefault(sid, {})
+        target = rest[1]
+        if target in ("off", "none", "-"):
+            rec.pop("song_pinned", None)
+            save_json(SESSIONS_FILE, d)
+            print(f"session {sid[:8]} song cleared")
+            return
+        if not song_mod.has_song(target):
+            print(f"unknown song '{target}'"); return
+        rec["song_pinned"] = target
+        save_json(SESSIONS_FILE, d)
+        print(f"session {sid[:8]} song → {target}")
+        return
     if sub == "unpin":
         if not rest: print("usage: claudio session unpin <id|index>"); return
         sid = _resolve_session(rest[0])
@@ -375,26 +549,69 @@ def cmd_here(args):
     cwd = os.environ.get("CLAUDIO_CWD") or os.getcwd()
     cmd_rule(["add", cwd, preset])
 
+def _format_rule(r):
+    parts = [f"  {r.get('pattern','?'):<48} → {r.get('preset','?'):<10}"]
+    extras = []
+    if "time" in r:           extras.append(f"time={r['time']}")
+    if "idle_after_s" in r:   extras.append(f"idle≥{r['idle_after_s']}s")
+    if extras:                parts.append("  " + "  ".join(extras))
+    return "".join(parts)
+
+
 def cmd_rule(args):
     if not args or args[0] in ("list", "ls"):
         rules = load_json(RULES_FILE, {"rules": []}).get("rules", [])
         if not rules: print("(no rules)"); return
+        print("rules are evaluated top-to-bottom; first match wins")
         for r in rules:
-            print(f"  {r.get('pattern','?'):<60} → {r.get('preset','?')}")
+            print(_format_rule(r))
         return
     sub = args[0]
-    rest = args[1:]
+    rest = list(args[1:])
     if sub == "add":
-        if len(rest) < 2: print("usage: claudio rule add <pattern> <preset>"); return
-        pattern, preset = rest[0], rest[1]
+        # parse positional + flag args.
+        # syntax: claudio rule add <pattern> <preset> [--time HH:MM-HH:MM] [--idle-after N]
+        time_val = None
+        idle_val = None
+        positional = []
+        i = 0
+        while i < len(rest):
+            a = rest[i]
+            if a == "--time" and i + 1 < len(rest):
+                time_val = rest[i + 1]; i += 2; continue
+            if a in ("--idle-after", "--idle") and i + 1 < len(rest):
+                idle_val = int(rest[i + 1]); i += 2; continue
+            positional.append(a); i += 1
+        if len(positional) < 2:
+            print("usage: claudio rule add <pattern> <preset> [--time HH:MM-HH:MM] [--idle-after N]")
+            return
+        pattern, preset = positional[0], positional[1]
         if not (PRESETS / preset / "preset.json").exists():
             print(f"unknown preset '{preset}'"); return
+        new_rule = {"pattern": pattern, "preset": preset}
+        if time_val:
+            try:
+                start_s, end_s = time_val.split("-")
+                for s in (start_s, end_s):
+                    h, m = s.split(":")
+                    int(h); int(m)
+            except Exception:
+                print(f"--time must be HH:MM-HH:MM (got '{time_val}')"); return
+            new_rule["time"] = time_val
+        if idle_val is not None:
+            if idle_val < 30:
+                print(f"--idle-after below 30s is too jumpy; pick a higher value"); return
+            new_rule["idle_after_s"] = idle_val
         d = load_json(RULES_FILE, {"rules": []})
-        rules = [r for r in d.get("rules", []) if r.get("pattern") != pattern]
-        rules.append({"pattern": pattern, "preset": preset})
+        # de-dup by pattern + time + idle (allow multiple rules for same pattern with different conditions)
+        key = (new_rule["pattern"], new_rule.get("time"), new_rule.get("idle_after_s"))
+        rules = [r for r in d.get("rules", [])
+                 if (r.get("pattern"), r.get("time"), r.get("idle_after_s")) != key]
+        rules.append(new_rule)
         d["rules"] = rules
         save_json(RULES_FILE, d)
-        print(f"rule: {pattern} → {preset}")
+        print(f"rule added:")
+        print(_format_rule(new_rule))
         return
     if sub in ("rm", "remove"):
         if not rest: print("usage: claudio rule rm <pattern>"); return
@@ -598,6 +815,484 @@ def cmd_test(voice=None):
         time.sleep(2.5)
     print("done.")
 
+# ---------- song / quant ----------
+
+def _channel_label(song, name):
+    ch = song_mod.get_channel(name)
+    if ch is None:
+        lead = song_mod.lead_channel(song)
+        return f"lead (auto={lead})"
+    if ch == "all":
+        return "all"
+    return f"ch{ch}"
+
+
+def cmd_song(args):
+    if not args or args[0] in ("list", "ls"):
+        names = song_mod.list_songs()
+        global_name = song_mod.global_song()
+        if not names:
+            print("(no songs imported — `claudio song import <file.mid>`)")
+            return
+        print(f"{'':2} {'name':<24} {'notes':>6}  {'bpm':>6}  channel")
+        for n in names:
+            tag = " *" if n == global_name else "  "
+            s = song_mod.load_song(n) or {}
+            print(f"{tag} {n:<24} {len(s.get('notes') or []):>6}  {s.get('bpm', 0):>6}  {_channel_label(s, n)}")
+        return
+    sub = args[0]; rest = args[1:]
+    if sub == "import":
+        if not rest:
+            print("usage: claudio song import <file.mid> [name]"); return
+        try:
+            name, parsed = song_mod.import_midi_file(rest[0], rest[1] if len(rest) > 1 else None)
+        except Exception as e:
+            print(f"import failed: {e}"); return
+        lead = song_mod.lead_channel(parsed)
+        print(f"imported '{name}': {len(parsed['notes'])} notes  bpm={parsed['bpm']}  lead=ch{lead}")
+        return
+    if sub in ("import-dir", "importdir"):
+        if not rest:
+            print("usage: claudio song import-dir <folder>"); return
+        folder = Path(rest[0]).expanduser()
+        if not folder.is_dir():
+            print(f"not a folder: {folder}"); return
+        files = sorted(p for p in folder.iterdir() if p.suffix.lower() == ".mid")
+        if not files:
+            print(f"no .mid files in {folder}"); return
+        for f in files:
+            try:
+                name, parsed = song_mod.import_midi_file(f)
+                lead = song_mod.lead_channel(parsed)
+                print(f"  ✓ {name:<24} {len(parsed['notes'])} notes  bpm={parsed['bpm']}  lead=ch{lead}")
+            except Exception as e:
+                print(f"  ✗ {f.name}: {e}")
+        return
+    if sub == "use":
+        if not rest:
+            print("usage: claudio song use <name>"); return
+        if not song_mod.set_global(rest[0]):
+            print(f"unknown song '{rest[0]}'. available: {', '.join(song_mod.list_songs()) or '(none)'}")
+            return
+        print(f"global song → {rest[0]} (events cycle through its notes)")
+        return
+    if sub in ("off", "stop", "disable"):
+        song_mod.disable_global()
+        print("global song off — back to Markov picker (preset/session pins still apply)")
+        return
+    if sub in ("current", "status", "show"):
+        g = song_mod.global_song()
+        print(f"global default: {g or '(none)'}")
+        if g:
+            s = song_mod.load_song(g) or {}
+            n = len(song_mod.notes_for(g))
+            print(f"  position:     {song_mod.position(g)} / {n}")
+            print(f"  channel:      {_channel_label(s, g)}")
+            print(f"  bpm (file):   {s.get('bpm')}")
+        # preset overrides
+        from importlib import import_module
+        for name in list_preset_names():
+            preset = load_preset(name)
+            ps = (preset or {}).get("song")
+            if ps:
+                print(f"  preset {name}: {ps}")
+        # session pins
+        sessions = load_json(SESSIONS_FILE, {"active": {}}).get("active", {})
+        for sid, rec in sessions.items():
+            sp = rec.get("song_pinned")
+            if sp:
+                print(f"  session {sid[:8]}: {sp}")
+        return
+    if sub == "reset":
+        target = rest[0] if rest else song_mod.global_song()
+        if not target:
+            print("usage: claudio song reset <name> (no global song set)"); return
+        song_mod.reset_position(target)
+        print(f"song '{target}' position → 0")
+        return
+    if sub == "channel":
+        if len(rest) < 2:
+            print("usage: claudio song channel <name> <lead|all|N>"); return
+        name, ch_str = rest[0], rest[1]
+        if not song_mod.has_song(name):
+            print(f"unknown song '{name}'"); return
+        if ch_str in ("lead", "auto"):
+            song_mod.set_channel(name, "lead")
+        elif ch_str == "all":
+            song_mod.set_channel(name, "all")
+        else:
+            try:
+                song_mod.set_channel(name, int(ch_str))
+            except ValueError:
+                print("channel must be 'lead', 'all', or an integer 0-15"); return
+        s = song_mod.load_song(name)
+        print(f"{name}.channel = {_channel_label(s, name)}  ({len(song_mod.notes_for(name))} notes after filter)")
+        return
+    if sub == "info":
+        if not rest:
+            print("usage: claudio song info <name>"); return
+        name = rest[0]
+        s = song_mod.load_song(name)
+        if not s:
+            print(f"unknown song '{name}'"); return
+        lead = song_mod.lead_channel(s)
+        print(f"{name}: {len(s.get('notes') or [])} notes  bpm={s.get('bpm')}  ppq={s.get('ppq')}")
+        print(f"  selected channel: {_channel_label(s, name)}")
+        print(f"  detected lead:    ch{lead}")
+        print(f"  channel breakdown:")
+        for ch, ct, med in song_mod.channel_summary(s):
+            marker = " ← lead" if ch == lead else ""
+            print(f"    ch{ch:>2}  {ct:>5} notes  median midi={med}{marker}")
+        return
+    print(f"unknown song subcommand: {sub}")
+
+
+def _print_quant():
+    q = song_mod.quant_settings()
+    state = "ON" if q["enabled"] else "off"
+    print(f"quant: {state}  tempo={q['bpm']} bpm  grid={q['grid']} beats")
+
+
+def cmd_quant(args):
+    if not args or args[0] in ("status", "show"):
+        _print_quant(); return
+    sub = args[0]
+    if sub == "on":
+        song_mod.set_quant(enabled=True);  _print_quant(); return
+    if sub == "off":
+        song_mod.set_quant(enabled=False); _print_quant(); return
+    if sub == "toggle":
+        cur = song_mod.quant_settings()["enabled"]
+        song_mod.set_quant(enabled=not cur); _print_quant(); return
+    print(f"unknown quant subcommand: {sub}")
+
+
+def cmd_tempo(args):
+    if not args:
+        _print_quant(); return
+    try:
+        bpm = float(args[0])
+    except ValueError:
+        print("usage: claudio tempo <bpm>"); return
+    song_mod.set_quant(bpm=bpm)
+    _print_quant()
+
+
+def cmd_grid(args):
+    if not args:
+        _print_quant(); return
+    aliases = {
+        "quarter": 1.0, "q": 1.0, "1/4": 1.0,
+        "8th": 0.5, "eighth": 0.5, "1/8": 0.5,
+        "16th": 0.25, "sixteenth": 0.25, "1/16": 0.25,
+        "32nd": 0.125, "1/32": 0.125,
+        "half": 2.0, "1/2": 2.0,
+    }
+    raw = args[0]
+    if raw in aliases:
+        grid = aliases[raw]
+    else:
+        try: grid = float(raw)
+        except ValueError:
+            print("usage: claudio grid <0.25|0.5|1.0|16th|8th|quarter|...>")
+            return
+    song_mod.set_quant(grid=grid)
+    _print_quant()
+
+
+# ---------- scale override ----------
+
+# Imports SCALES dict from event.py — single source of truth.
+def _scale_names():
+    sys.path.insert(0, str(HERE))
+    import event as _ev
+    return list(_ev.SCALES.keys())
+
+
+def cmd_scale(args):
+    """Apply a per-config (current shell) scale override. Affects all sessions
+    that don't have their own pin. Resolution: session pin > config > preset default."""
+    if not args or args[0] in ("list", "ls"):
+        names = _scale_names()
+        cur = load_config().get("scale_override")
+        for n in names:
+            tag = " *" if n == cur else "  "
+            print(f"{tag} {n}")
+        return
+    sub = args[0]
+    if sub in ("off", "stop", "disable", "clear"):
+        cfg = load_config(); cfg.pop("scale_override", None); save_config(cfg)
+        print("scale override cleared")
+        return
+    if sub in ("show", "current", "status"):
+        cur = load_config().get("scale_override")
+        print(f"global scale: {cur or '(off — preset default)'}")
+        sessions = load_json(SESSIONS_FILE, {"active": {}}).get("active", {})
+        for sid, rec in sessions.items():
+            if rec.get("scale_override"):
+                print(f"  session {sid[:8]}: {rec['scale_override']}")
+        return
+    if sub == "use" or sub in _scale_names():
+        # `claudio scale use <name>` or shorthand `claudio scale <name>`
+        name = args[1] if sub == "use" and len(args) > 1 else sub
+        if name not in _scale_names():
+            print(f"unknown scale '{name}'. available: {', '.join(_scale_names())}")
+            return
+        cfg = load_config(); cfg["scale_override"] = name; save_config(cfg)
+        print(f"global scale → {name}")
+        return
+    print(f"unknown scale subcommand: {sub}")
+
+
+# ---------- preset reverb scale ----------
+
+def cmd_preset_reverb(args):
+    """Set or read the active preset's reverb_scale multiplier. Auto-regens.
+    1.0 = unchanged from rendered defaults; 0.5 = half wet; 1.5 = 50% wetter."""
+    pname = active_preset_name()
+    preset = load_preset(pname)
+    if preset is None:
+        print(f"no active preset"); return
+    if not args:
+        print(f"{pname}.reverb_scale = {preset.get('reverb_scale', 1.0)}")
+        return
+    try:
+        scale = max(0.0, min(2.0, float(args[0])))
+    except ValueError:
+        print("usage: claudio preset reverb <0..2>"); return
+    preset["reverb_scale"] = round(scale, 3)
+    save_preset(pname, preset)
+    print(f"{pname}.reverb_scale = {scale}  (regenerating samples...)")
+    cmd_regen([pname])
+
+
+# ---------- per-event delay ----------
+
+def cmd_event(args):
+    """Set per-event-mapping effects (currently only delay/echo).
+    Examples:
+      claudio event delay Stop 320 0.30 3      # ms / feedback / count
+      claudio event delay PostToolUse off      # remove the echo
+      claudio event show                       # show current event effects
+    """
+    if not args or args[0] in ("show", "list", "ls"):
+        pname = active_preset_name()
+        preset = load_preset(pname)
+        if preset is None: return
+        events = preset.get("events", {})
+        any_effects = False
+        for ev, spec in events.items():
+            if not isinstance(spec, dict): continue
+            eff = spec.get("effect")
+            if eff:
+                any_effects = True
+                d = eff.get("delay")
+                if d:
+                    print(f"  {ev}: delay {d.get('ms','?')}ms  fb={d.get('feedback','?')}  count={d.get('count','?')}")
+        if not any_effects:
+            print(f"(no event effects on '{pname}')")
+        return
+    sub = args[0]
+    rest = args[1:]
+    if sub == "delay":
+        if len(rest) < 2:
+            print("usage: claudio event delay <Event> <ms|off> [feedback] [count]")
+            return
+        ev = rest[0]
+        pname = active_preset_name()
+        preset = load_preset(pname)
+        if preset is None: return
+        events = preset.setdefault("events", {})
+        spec = events.setdefault(ev, {"default": None})
+        if not isinstance(spec, dict):
+            spec = {"default": spec}
+            events[ev] = spec
+        if rest[1] in ("off", "none", "-", "0"):
+            if "effect" in spec and "delay" in spec["effect"]:
+                spec["effect"].pop("delay", None)
+                if not spec["effect"]:
+                    spec.pop("effect", None)
+            save_preset(pname, preset)
+            print(f"{ev}: delay cleared")
+            return
+        try:
+            ms = max(40, min(2000, int(rest[1])))
+            fb = float(rest[2]) if len(rest) > 2 else 0.30
+            count = int(rest[3]) if len(rest) > 3 else 3
+        except ValueError:
+            print("usage: claudio event delay <Event> <ms> [feedback 0..0.85] [count 0..8]")
+            return
+        fb = max(0.0, min(0.85, fb))
+        count = max(0, min(8, count))
+        spec.setdefault("effect", {})["delay"] = {"ms": ms, "feedback": round(fb, 3), "count": count}
+        save_preset(pname, preset)
+        print(f"{ev}: delay {ms}ms  fb={fb}  count={count}")
+        return
+    print(f"unknown event subcommand: {sub}")
+
+
+# ---------- demo / audition / status-line ----------
+
+# Demo script: ~60 s of varied events with musical pacing. Designed to
+# trigger every voice family in any preset and feel like a real session,
+# not a checklist. Tools chosen so by_tool overrides actually fire.
+_DEMO_SCRIPT = [
+    ("SessionStart",     None,           1.6, "session begins"),
+    ("UserPromptSubmit", None,           1.1, "you ask a question"),
+    ("PreToolUse",       "Read",         0.3, "claude opens a file"),
+    ("PostToolUse",      "Read",         1.6, "  …reads it"),
+    ("PreToolUse",       "Bash",         0.3, "shell command"),
+    ("PostToolUse",      "Bash",         1.4, "  …completes"),
+    ("PreToolUse",       "Edit",         0.4, "file edit incoming"),
+    ("PostToolUse",      "Edit",         2.4, "  …saved"),
+    ("PreToolUse",       "Write",        0.4, "writing a new file"),
+    ("PostToolUse",      "Write",        2.0, "  …written"),
+    ("PreToolUse",       "Read",         0.3, "another read"),
+    ("PostToolUse",      "Read",         3.0, "  …done"),
+    ("SubagentStop",     None,           4.0, "subagent finishes"),
+    ("PreToolUse",       "MultiEdit",    0.4, "batch edit"),
+    ("PostToolUse",      "MultiEdit",    2.5, "  …complete"),
+    ("PreToolUse",       "Bash",         0.3, "test command"),
+    ("PostToolUse",      "Bash",         3.5, "  …passes"),
+    ("Stop",             None,           5.0, "claude finishes"),
+    ("SessionEnd",       None,           0.0, "session over"),
+]
+
+
+def _fire_event_payload(payload):
+    p = subprocess.Popen(
+        ["/usr/bin/env", "python3", EVENT_PATH],
+        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+    )
+    p.communicate(json.dumps(payload).encode())
+
+
+def cmd_demo(args):
+    """60-second showcase. Fires events with musical gaps; selectively clears
+    MIOI before bloom/cluster events so they actually sound."""
+    pname = active_preset_name()
+    preset = load_preset(pname)
+    if preset is None:
+        print(f"preset '{pname}' not found"); return
+    voices_with_long_mioi = {n for n, v in preset.get("voices", {}).items()
+                              if v.get("mioi", 0.5) >= 4.0}
+    print(f"demo: {pname} ({preset.get('description','')[:60]})")
+    print("─" * 70)
+    clear_mioi(pname)
+    started = time.time()
+    for ev, tool, gap, label in _DEMO_SCRIPT:
+        # Resolve the voice this event will pick — used for the timeline label
+        # AND for pre-clearing MIOI on long-cooldown voices so they actually fire.
+        from importlib.util import spec_from_file_location, module_from_spec
+        spec = spec_from_file_location("event_mod", str(HERE / "event.py"))
+        mod = module_from_spec(spec); spec.loader.exec_module(mod)
+        payload = {"hook_event_name": ev, "session_id": "demo"}
+        if tool: payload["tool_name"] = tool
+        voice = mod.resolve_voice(preset, ev, payload)
+        if voice in voices_with_long_mioi:
+            # let the slow voice fire even mid-demo
+            (STATE / pname / f"last-{voice}.txt").unlink(missing_ok=True)
+        elapsed = time.time() - started
+        ev_label = f"{ev}{f'({tool})' if tool else ''}"
+        print(f"  {int(elapsed):>2}s  {ev_label:<28} → {voice or '-':<10}  {label}")
+        _fire_event_payload(payload)
+        time.sleep(gap)
+    print("─" * 70)
+    print(f"demo complete ({int(time.time() - started)}s).")
+
+
+def _audition_blurbs():
+    return {
+        "meadow":    "bright, happy, felt-mallets in a sunlit room",
+        "cathedral": "modal drone bed; airy plucks; the lush one",
+        "rainfall":  "sparse drops, near-silence — silence as canvas",
+        "koto":      "plucked silk strings + temple bowl, japanese",
+    }
+
+
+def cmd_audition(args):
+    """Play a 12-second slice of every preset in turn so you can pick one.
+    Doesn't change config.json unless --pick is passed and the user chooses.
+    Safe to run any time."""
+    blurbs = _audition_blurbs()
+    order = ["meadow", "cathedral", "rainfall", "koto"]
+    available = [n for n in order if n in list_preset_names()]
+    if not available:
+        print("no presets installed"); return
+    cur = active_preset_name()
+    print("audition — listen to each preset, then pick one")
+    print("─" * 70)
+    cfg_save = load_config()
+    try:
+        for n in available:
+            cfg = load_config(); cfg["preset"] = n
+            cfg["muted"] = False
+            save_config(cfg)
+            print(f"  ▶ {n:<10}  {blurbs.get(n, '')}")
+            clear_mioi(n)
+            preset = load_preset(n)
+            for ev in ("SessionStart", "UserPromptSubmit",
+                       "PreToolUse", "PostToolUse",
+                       "PreToolUse", "PostToolUse", "Stop"):
+                payload = {"hook_event_name": ev, "session_id": "audition"}
+                if ev in ("PreToolUse", "PostToolUse"):
+                    payload["tool_name"] = "Read"
+                _fire_event_payload(payload)
+                time.sleep(1.4)
+            time.sleep(1.0)
+        print("─" * 70)
+        try:
+            choice = input(f"pick one [1-{len(available)}, Enter=keep '{cur}']: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            choice = ""
+        if choice.isdigit():
+            i = int(choice) - 1
+            if 0 <= i < len(available):
+                target = available[i]
+                cfg = load_config(); cfg["preset"] = target
+                save_config(cfg)
+                print(f"active preset → {target}")
+                return
+        # restore previous
+        save_config(cfg_save)
+        print(f"kept '{cur}'")
+    except Exception as e:
+        save_config(cfg_save)
+        raise
+
+
+def cmd_status_line(args):
+    """Print ONE line summarizing live state. Suitable for tmux:
+    `set -g status-right \"#(claudio status-line)\"`
+    Reads existing state files; no per-event file write."""
+    cfg = load_config()
+    name = cfg.get("preset", DEFAULT_PRESET)
+    muted = cfg.get("muted", False)
+    # last fired voice across all voices for this preset
+    sd = STATE / name
+    last_voice, last_ts = None, 0.0
+    if sd.exists():
+        for f in sd.glob("last-*.txt"):
+            try:
+                ts = float(f.read_text().strip())
+                if ts > last_ts:
+                    last_ts = ts
+                    last_voice = f.stem.replace("last-", "")
+            except Exception:
+                pass
+    age = int(time.time() - last_ts) if last_ts else None
+    voice_field = f"{last_voice}{f' {age}s' if age is not None else ''}" if last_voice else "—"
+    state = "🔇" if muted else "🔊"
+    sym = song_mod.global_song()
+    pieces = [f"{state} {name}", f"voice:{voice_field}"]
+    if sym:
+        pieces.append(f"♪{sym}")
+    q = song_mod.quant_settings()
+    if q.get("enabled"):
+        pieces.append(f"⏱ {int(q.get('bpm', 120))}bpm")
+    print(" │ ".join(pieces))
+
+
 # ---------- tune (TUI) ----------
 
 def cmd_tune():
@@ -631,6 +1326,16 @@ def main(argv):
     elif cmd == "off":                  cmd_off()
     elif cmd == "on":                   cmd_on()
     elif cmd == "toggle":               cmd_toggle()
+    elif cmd == "reset":                cmd_reset(args)
+    elif cmd == "demo":                 cmd_demo(args)
+    elif cmd == "audition":             cmd_audition(args)
+    elif cmd in ("status-line", "statusline"): cmd_status_line(args)
+    elif cmd == "scale":                cmd_scale(args)
+    elif cmd == "event":                cmd_event(args)
+    elif cmd in ("song", "songs"):      cmd_song(args)
+    elif cmd == "quant":                cmd_quant(args)
+    elif cmd == "tempo":                cmd_tempo(args)
+    elif cmd == "grid":                 cmd_grid(args)
     else:
         print(__doc__)
 

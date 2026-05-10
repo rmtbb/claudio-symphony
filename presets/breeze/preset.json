@@ -1,0 +1,26 @@
+{
+  "name": "breeze",
+  "description": "Airy and bright. A Lydian. Crystal chimes, soft pluck, gentle wind breath. Tiny delays give a sense of air movement. Cheerful without trying.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "phrase_roots": [9, 4],
+  "scale_pitches": [69, 71, 73, 75, 76, 78, 80, 81, 83, 85, 87, 88],
+  "voices": {
+    "crystal": { "dir": "crystal", "mioi": 0.5, "gain": 0.30 },
+    "soft_pluck": { "dir": "soft_pluck", "mioi": 0.3, "gain": 0.40, "rate_jitter": true },
+    "wind": { "dir": "wind", "mioi": 0.06, "gain": 0.30 },
+    "high_chime": { "dir": "high_chime", "mioi": 6.0, "gain": 0.36 }
+  },
+  "events": {
+    "PreToolUse":       { "default": "wind", "by_tool": { "Bash": "wind" } },
+    "PostToolUse":      { "default": "soft_pluck", "on_failure": "crystal" },
+    "Stop":             { "default": "high_chime" },
+    "SessionStart":     { "default": "high_chime" },
+    "SessionEnd":       { "default": "crystal" },
+    "SubagentStop":     { "default": "crystal" },
+    "UserPromptSubmit": { "default": "wind" },
+    "Notification":     { "default": "crystal" },
+    "PreCompact":       { "default": "high_chime" }
+  }
+}

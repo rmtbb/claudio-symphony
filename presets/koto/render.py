@@ -32,6 +32,21 @@ from synth import (
     reverb_stereo, to_stereo, write_wav,
 )
 
+# === reverb_scale monkeypatch ===
+# Reads top-level reverb_scale from this preset's preset.json (default 1.0)
+# and multiplies every reverb_stereo() wet by it. Lets `claudio preset reverb`
+# tune ALL voices' reverb in one shot without editing the call sites.
+import json as _json
+import synth as _synth
+_PRESET_CFG = _json.loads((HERE / "preset.json").read_text())
+_REVERB_SCALE = float(_PRESET_CFG.get("reverb_scale", 1.0))
+_orig_reverb_stereo = _synth.reverb_stereo
+def reverb_stereo(mono, **kwargs):
+    if "wet" in kwargs:
+        kwargs["wet"] = max(0.0, min(1.0, float(kwargs["wet"]) * _REVERB_SCALE))
+    return _orig_reverb_stereo(mono, **kwargs)
+
+
 OUT = HERE / "samples"
 for sub in ("koto", "bowl", "mokugyo"):
     (OUT / sub).mkdir(parents=True, exist_ok=True)

@@ -9,15 +9,28 @@ Run from a fresh clone:
 This will:
   1. Verify dependencies (Python 3, numpy, /usr/bin/afplay).
   2. Render samples for every preset under presets/.
-  3. Print the next steps (./bin/claudio install / start / tune).
+  3. Write a starter config.json (preset=meadow, master 0.55, drone 0.0)
+     unless one already exists.
+  4. Print the next steps (./bin/claudio install / start / tune).
 
 Re-run any time to regenerate samples (existing samples are overwritten).
 """
-import sys, shutil, subprocess, os
+import sys, shutil, subprocess, os, json
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 PRESETS = HERE / "presets"
+CONFIG = HERE / "config.json"
+
+# Ships with these defaults. Mirrors the curator's working setup:
+# meadow as the default preset, master 0.55, drone fully off, quant primed
+# but disabled. Users can `claudio reset` to restore this exact state.
+DEFAULT_CONFIG = {
+    "preset": "meadow",
+    "master_gain": 0.55,
+    "drone_gain": 0.0,
+    "quant": {"enabled": False, "bpm": 120.0, "grid": 0.5},
+}
 
 def step(msg):
     print(f"\n→ {msg}")
@@ -61,6 +74,15 @@ for p in preset_dirs:
         fatal(f"render failed for preset '{p.name}'")
     n_wavs = sum(1 for _ in (p / "samples").rglob("*.wav"))
     print(f"    {n_wavs} samples")
+
+step("Writing starter config (only if config.json doesn't exist)")
+if CONFIG.exists():
+    print(f"  config.json already present — leaving it alone")
+else:
+    CONFIG.write_text(json.dumps(DEFAULT_CONFIG, indent=2) + "\n")
+    print(f"  wrote {CONFIG.name} with preset={DEFAULT_CONFIG['preset']}, "
+          f"master_gain={DEFAULT_CONFIG['master_gain']}, "
+          f"drone_gain={DEFAULT_CONFIG['drone_gain']}")
 
 claudio = HERE / "bin" / "claudio"
 print()

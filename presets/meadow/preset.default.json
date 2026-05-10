@@ -4,19 +4,16 @@
   "drone": null,
   "master_gain": 0.55,
   "drone_gain": 0.0,
-  "scale_pitches": [57, 59, 61, 64, 66, 69, 71, 73, 76, 78, 81],
   "voices": {
     "mallet": {
       "dir": "mallet",
       "mioi": 0.35,
-      "gain": 0.15,
-      "rate_jitter": true
+      "gain": 0.15
     },
     "kalimba": {
       "dir": "kalimba",
       "mioi": 0.208,
-      "gain": 0.2,
-      "rate_jitter": true
+      "gain": 0.2
     },
     "chime": {
       "dir": "chime",
@@ -26,15 +23,12 @@
     "bird": {
       "dir": "bird",
       "mioi": 0.034,
-      "gain": 0.8,
-      "tonal_anchor_midi": 81
+      "gain": 0.8
     },
     "wood": {
       "dir": "wood",
       "mioi": 0.08,
-      "gain": 0.9,
-      "rate_jitter": true,
-      "tonal_anchor_midi": 69
+      "gain": 0.9
     },
     "bloom": {
       "dir": "bloom",

@@ -1,0 +1,26 @@
+{
+  "name": "droplet",
+  "description": "Sibling of rainfall but with delay. A Lydian. Tiny single-note plucks with soft feedback echoes — like a stone dropped in still water. Sparse, no long pads.",
+  "drone": null,
+  "master_gain": 0.40,
+  "drone_gain": 0.0,
+  "phrase_roots": [9, 4],
+  "scale_pitches": [69, 71, 73, 75, 76, 78, 80, 81, 83, 85, 88],
+  "voices": {
+    "drop": { "dir": "drop", "mioi": 0.04, "gain": 0.45, "rate_jitter": true },
+    "ring": { "dir": "ring", "mioi": 0.5, "gain": 0.32 },
+    "tap": { "dir": "tap", "mioi": 0.03, "gain": 0.40, "rate_jitter": true, "tonal_anchor_midi": 81 },
+    "glow_bell": { "dir": "glow_bell", "mioi": 22.0, "gain": 0.38 }
+  },
+  "events": {
+    "PreToolUse":       { "default": "tap" },
+    "PostToolUse":      { "default": "drop", "on_failure": "ring" },
+    "Stop":             { "default": "ring" },
+    "SessionStart":     { "default": "glow_bell" },
+    "SessionEnd":       { "default": "ring" },
+    "SubagentStop":     { "default": "ring" },
+    "UserPromptSubmit": { "default": "tap" },
+    "Notification":     { "default": "ring" },
+    "PreCompact":       { "default": "glow_bell" }
+  }
+}

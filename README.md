@@ -22,24 +22,29 @@ It is not a notification system. It is a room your Claude session is happening i
 
 ## Listen first
 
-Three presets ship in the box. Pick the room you want to be in.
+Four presets ship in the box. **`meadow` is the default** — bright, friendly, no drone. Pick the room you want to be in; switch any time.
+
+### 🌳  `meadow` — the happy one *(default)*
+> *Wooden felt-mallets and kalimba in a sunlit room. A major pentatonic — universal happy mode, no possible dissonance.*
+
+Bright. Satisfying. Defined-but-soft attacks. The mallet "thock" of felt on wood. Kalimba tines for file edits. A small bird-chirp for shell commands. A 9-second major-triad bloom when Claude finishes. Like a music box in a sunny room.
 
 ### 🏛️  `cathedral` — the lush one
 > *Modal drone bed with a full event palette. Eight voices. Always-on. The Eno / Budd / Frahm lane.*
 
 Low drone never stops. Soft felt-piano notes resolve to themselves as tools complete. Faint air-hisses pass by during bash commands. A tuned bell when a sub-agent finishes. Nothing has a melody. Nothing repeats. The room breathes with the work.
 
-### 🌳  `meadow` — the happy one
-> *Wooden felt-mallets and kalimba in a sunlit room. A major pentatonic — universal happy mode, no possible dissonance.*
-
-Bright. Satisfying. Defined-but-soft attacks. The mallet "thock" of felt on wood. Kalimba tines for file edits. A small bird-chirp for shell commands. A 9-second major-triad bloom when Claude finishes. Like a music box in a sunny room.
-
 ### 🌧️  `rainfall` — the quiet one
 > *Sparse drops in a quiet room with rare long swells. Silence is the canvas.*
 
 Most of the time you hear nothing. PostToolUse plays a tiny 250 ms drop — like a single bead of water meeting a still pond. Once every minute or two, a 25-second pad blooms in the distance and recedes. Late-night, focused-work, almost-silent.
 
-All three are in the same A-rooted tonal family, so switching between them mid-session is musically continuous. Switch live with one command.
+### 🎋  `koto` — the contemplative one
+> *Plucked silk strings and a temple bowl in the A In Sen scale. Spare. Like working through a tea ceremony.*
+
+A different emotional space from the A-major family above — minor-leaning, deliberate, Japanese. Three voices: koto for melody, bowl for sustains, mokugyo (wooden fish) for percussive accents.
+
+The first three sit in the same A-rooted tonal family, so switching between them mid-session is musically continuous. Switch live with one command.
 
 ---
 
@@ -65,9 +70,8 @@ All in scale. All consonant. All baked in synthetic-IR convolution reverb.
 ```bash
 git clone https://github.com/rmtbb/claudio-symphony.git
 cd claudio-symphony
-python3 install.py            # checks deps, renders all preset samples
+python3 install.py            # deps + render samples + write starter config
 ./bin/claudio install         # adds hooks to ~/.claude/settings.json
-./bin/claudio start           # start the drone (cathedral preset only)
 ```
 
 Open a new Claude Code session and listen. That's it.
@@ -84,7 +88,11 @@ Open a new Claude Code session and listen. That's it.
 ```bash
 claudio status                          # what's installed and active
 claudio preset list                     # see all available presets
-claudio preset use meadow               # switch live (no Claude restart)
+claudio preset use cathedral            # switch live (no Claude restart)
+claudio preset use default              # back to the shipped default (meadow)
+claudio preset reset meadow             # restore one preset to as-shipped
+claudio reset --yes                     # full reset to fresh-install state
+claudio off / claudio on                # silence everything / restore
 claudio tune                            # interactive TUI for tweaking everything
 claudio test                            # walk every voice in the active preset
 claudio volume 0.4                      # master gain for all triggered events

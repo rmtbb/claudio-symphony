@@ -1,0 +1,26 @@
+{
+  "name": "wisp",
+  "description": "Barely there. A Lydian. Pure sine tones with long delay tails, tiny noise pops, rare bell. The 'almost silent' preset — for very deep focus.",
+  "drone": null,
+  "master_gain": 0.38,
+  "drone_gain": 0.0,
+  "phrase_roots": [9, 4],
+  "scale_pitches": [76, 78, 80, 81, 83, 85, 87, 88, 90, 92, 93],
+  "voices": {
+    "sine": { "dir": "sine", "mioi": 0.30, "gain": 0.32, "rate_jitter": true },
+    "pop": { "dir": "pop", "mioi": 0.04, "gain": 0.30, "rate_jitter": true, "tonal_anchor_midi": 81 },
+    "breath": { "dir": "breath", "mioi": 0.4, "gain": 0.25 },
+    "rare_bell": { "dir": "rare_bell", "mioi": 16.0, "gain": 0.32 }
+  },
+  "events": {
+    "PreToolUse":       { "default": "pop" },
+    "PostToolUse":      { "default": "sine", "on_failure": "rare_bell" },
+    "Stop":             { "default": "rare_bell" },
+    "SessionStart":     { "default": "rare_bell" },
+    "SessionEnd":       { "default": "rare_bell" },
+    "SubagentStop":     { "default": "rare_bell" },
+    "UserPromptSubmit": { "default": "pop" },
+    "Notification":     { "default": "rare_bell" },
+    "PreCompact":       { "default": "rare_bell" }
+  }
+}

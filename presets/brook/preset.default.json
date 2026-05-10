@@ -1,0 +1,26 @@
+{
+  "name": "brook",
+  "description": "Burbling stream: tiny pitched bubbles, soft wood pops, light chimes. A major pentatonic. Watery and warm — moving but never busy.",
+  "drone": null,
+  "master_gain": 0.46,
+  "drone_gain": 0.0,
+  "phrase_roots": [9, 4],
+  "scale_pitches": [69, 71, 73, 76, 78, 81, 83, 85, 88],
+  "voices": {
+    "bubble": { "dir": "bubble", "mioi": 0.20, "gain": 0.42, "rate_jitter": true },
+    "pop": { "dir": "pop", "mioi": 0.05, "gain": 0.45, "rate_jitter": true, "tonal_anchor_midi": 81 },
+    "soft_chime": { "dir": "soft_chime", "mioi": 0.7, "gain": 0.32 },
+    "small_swell": { "dir": "small_swell", "mioi": 14.0, "gain": 0.40 }
+  },
+  "events": {
+    "PreToolUse":       { "default": "pop" },
+    "PostToolUse":      { "default": "bubble", "on_failure": "soft_chime" },
+    "Stop":             { "default": "soft_chime" },
+    "SessionStart":     { "default": "small_swell" },
+    "SessionEnd":       { "default": "soft_chime" },
+    "SubagentStop":     { "default": "soft_chime" },
+    "UserPromptSubmit": { "default": "pop" },
+    "Notification":     { "default": "soft_chime" },
+    "PreCompact":       { "default": "small_swell" }
+  }
+}
