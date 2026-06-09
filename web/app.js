@@ -327,26 +327,37 @@ function renderVoices() {
   });
 }
 
+function playMapped(row, label) {
+  const sel = row.querySelector('select.vsel');
+  const voice = sel ? sel.value : null;
+  if (!voice || voice === '__none__') { toast(`<span class="g">${label}</span> is silent`); return; }
+  api.post('/api/voice/play', { preset: editPreset(), voice });
+  flare(voice);
+  toast(`<span class="g">${label}</span> → ${voice}`);
+}
 function renderEvents() {
   const wrap = $('#events'); wrap.innerHTML = ''; const P = editPreset();
   const opts = (sel) => ['<option value="__none__"' + (sel == null ? ' selected' : '') + '>— silent —</option>']
     .concat(DETAIL.voice_names.map(n => `<option ${n === sel ? 'selected' : ''}>${n}</option>`)).join('');
   DETAIL.events.forEach(ev => {
     const row = document.createElement('div'); row.className = 'erow'; row.dataset.event = ev.event;
-    row.innerHTML = `<span class="edot"></span><span><span class="ename">${ev.event}</span></span><select class="vsel ${ev.default==null?'silent':''}">${opts(ev.default)}</select>`;
+    row.innerHTML = `<span class="edot"></span><span class="elabel" title="click to hear it"><span class="ename">${ev.event}</span></span><select class="vsel ${ev.default==null?'silent':''}">${opts(ev.default)}</select>`;
     row.querySelector('select').onchange = e => { api.post('/api/map', { preset: P, event: ev.event, key: 'default', voice: e.target.value }); e.target.classList.toggle('silent', e.target.value === '__none__'); };
+    row.querySelector('.elabel').onclick = () => playMapped(row, ev.event);
     wrap.appendChild(row);
     Object.entries(ev.by_tool).forEach(([tool, voice]) => {
       const sr = document.createElement('div'); sr.className = 'erow sub';
-      sr.innerHTML = `<span></span><span><span class="ename">${tool}</span><span class="ekey">by-tool</span></span><select class="vsel ${voice==null?'silent':''}">${opts(voice)}</select>`;
+      sr.innerHTML = `<span></span><span class="elabel" title="click to hear it"><span class="ename">${tool}</span><span class="ekey">by-tool</span></span><select class="vsel ${voice==null?'silent':''}">${opts(voice)}</select>`;
       sr.querySelector('select').onchange = e => api.post('/api/map', { preset: P, event: ev.event, key: tool, voice: e.target.value });
+      sr.querySelector('.elabel').onclick = () => playMapped(sr, tool);
       wrap.appendChild(sr);
     });
     if (ev.on_failure !== null && ev.on_failure !== undefined) {
       const ofv = ev.on_failure === '__none__' ? null : ev.on_failure;
       const sr = document.createElement('div'); sr.className = 'erow sub';
-      sr.innerHTML = `<span></span><span><span class="ename">on failure</span><span class="ekey">fallback</span></span><select class="vsel ${ofv==null?'silent':''}">${opts(ofv)}</select>`;
+      sr.innerHTML = `<span></span><span class="elabel" title="click to hear it"><span class="ename">on failure</span><span class="ekey">fallback</span></span><select class="vsel ${ofv==null?'silent':''}">${opts(ofv)}</select>`;
       sr.querySelector('select').onchange = e => api.post('/api/map', { preset: P, event: ev.event, key: 'on_failure', voice: e.target.value });
+      sr.querySelector('.elabel').onclick = () => playMapped(sr, 'on failure');
       wrap.appendChild(sr);
     }
   });

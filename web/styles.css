@@ -577,3 +577,12 @@ body.is-muted .muted-banner { display:flex; align-items:center; gap:8px; justify
 .rec-drone-txt { font:12px var(--mono); color: var(--text); }
 .rec-drone-txt em { font-style:normal; color: var(--faint); font-size:11px; }
 .rec-drone.on .rec-drone-txt { color: var(--gold-hi); }
+
+/* clickable event labels (Events tab) — click to audition the mapped voice */
+.erow .elabel { cursor:pointer; display:inline-flex; align-items:baseline; gap:6px;
+  padding:4px 9px; margin:-4px -9px; border-radius:8px; transition: background .15s, color .15s; width:fit-content; }
+.erow .elabel:hover { background: rgba(232,178,92,.1); }
+.erow .elabel:hover .ename { color: var(--gold-hi); }
+.erow .elabel:active { background: rgba(232,178,92,.18); }
+.erow .elabel::after { content:'▸'; font-size:10px; color: var(--faint); opacity:0; transition: opacity .15s; align-self:center; }
+.erow .elabel:hover::after { opacity:.8; color: var(--gold); }
