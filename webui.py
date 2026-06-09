@@ -435,10 +435,13 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception: secs = 30
                 secs = max(1, min(300, secs))
                 REC_DIR.mkdir(parents=True, exist_ok=True)
-                subprocess.Popen(["/usr/bin/env", "python3", RECORD_PY, "run", str(secs)],
-                                 cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                cmd = ["/usr/bin/env", "python3", RECORD_PY, "run", str(secs)]
+                if b.get("drone"):
+                    cmd.append("--drone")
+                subprocess.Popen(cmd, cwd=str(HERE),
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                  start_new_session=True, close_fds=True)
-                return self._send(200, {"ok": True, "seconds": secs})
+                return self._send(200, {"ok": True, "seconds": secs, "drone": bool(b.get("drone"))})
             if path == "/api/record/stop":
                 try:
                     m = json.loads(REC_ACTIVE.read_text())

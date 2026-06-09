@@ -115,13 +115,16 @@ Found a preset + workflow that sounds *amazing*? Capture it and show it off.
 ```bash
 claudio record           # record 30 seconds (the default)
 claudio record 120       # record up to 5 minutes (300s max)
+claudio record --drone   # add a faded drone bed for a more song-like clip
 claudio record stop      # finish early and save right now
 claudio record list      # see your saved clips
 ```
 
 Here's the neat part: because Claudio already knows every sound it plays, recording **doesn't touch your mic or system audio** — it mixes the *exact* samples back into one clean track. Only Claudio, no room noise, no other apps, no virtual-audio-device setup. Clips land in `recordings/` as a `.wav` plus a small `.m4a` for easy sharing.
 
-Prefer buttons? Hit **● Rec** in `claudio web` — pick a length, go work in your sessions, and grab the clip with a built-in player and download link.
+**Optional drone bed.** The drone stays **off** for everyday use, but recordings can opt into one (`--drone`, or the toggle in `claudio web`). It lays a low, A-rooted drone under the clip and **fades it in and out**, so the take feels like one cohesive piece rather than scattered sounds. Off by default — it's there when you want body, gone when you don't.
+
+Prefer buttons? Hit **● Rec** in `claudio web` — pick a length, optionally flip on the drone bed, go work in your sessions, and grab the clip with a built-in player and download link.
 
 > **Share it! 🎧** Post your clip with the preset name so others can hear how their sessions could sound. The more sounds people share, the richer Claudio gets — and if you tune a combination you love, [open a PR with the preset](#-make-your-own-preset) too.
 

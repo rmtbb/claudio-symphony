@@ -171,7 +171,7 @@ function closeTip() { $('#tipModal').hidden = true; }
 
 /* ---------------- record & share ---------------- */
 const REC_DURATIONS = [[15, '15s'], [30, '30s'], [60, '1m'], [120, '2m'], [300, '5m']];
-let recPick = 30, recPoll = null;
+let recPick = 30, recDrone = false, recPoll = null;
 function openRec() { $('#recModal').hidden = false; refreshRec(); recPoll = setInterval(refreshRec, 1000); }
 function closeRec() { $('#recModal').hidden = true; if (recPoll) { clearInterval(recPoll); recPoll = null; } }
 async function refreshRec() {
@@ -198,12 +198,17 @@ function renderRecBody(s) {
     body.innerHTML = `
       <div class="rec-idle">
         <div class="rec-pick">${REC_DURATIONS.map(([v, l]) => `<button class="rec-chip${v === recPick ? ' on' : ''}" data-v="${v}">${l}</button>`).join('')}</div>
+        <button class="rec-drone${recDrone ? ' on' : ''}" id="recDrone">
+          <span class="rec-drone-sw"></span>
+          <span class="rec-drone-txt">🌫️ Add a drone bed <em>· fades in &amp; out, for a more song-like clip</em></span>
+        </button>
         <button class="rec-go" id="recGo">● Start recording</button>
         <div class="rec-hint">Then go work in your Claude sessions — sounds are captured as Claude plays them.</div>
       </div>`;
     body.querySelectorAll('.rec-chip').forEach(c => c.onclick = () => { recPick = +c.dataset.v; renderRecBody(s); });
+    body.querySelector('#recDrone').onclick = () => { recDrone = !recDrone; renderRecBody(s); };
     body.querySelector('#recGo').onclick = async () => {
-      const r = await api.post('/api/record/start', { seconds: recPick });
+      const r = await api.post('/api/record/start', { seconds: recPick, drone: recDrone });
       if (r && r.ok === false) { toast(r.msg || 'already recording'); }
       else { toast(`<span class="g">recording</span> ${recPick}s — go make some sounds`); }
       setTimeout(refreshRec, 500);

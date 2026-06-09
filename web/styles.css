@@ -562,3 +562,18 @@ body.is-muted .muted-banner { display:flex; align-items:center; gap:8px; justify
 .rec-dl { font:10px var(--mono); letter-spacing:.5px; color: var(--gold); text-decoration:none; border:1px solid var(--line-2);
   border-radius:7px; padding:5px 8px; transition:.18s; }
 .rec-dl:hover { color: var(--gold-hi); border-color: rgba(232,178,92,.6); background: rgba(232,178,92,.08); }
+
+/* drone toggle in the record modal */
+.rec-drone { display:flex; align-items:center; gap:11px; background: var(--bg); border:1px solid var(--line);
+  border-radius:11px; padding:11px 15px; cursor:pointer; transition:.18s; max-width:430px; }
+.rec-drone:hover { border-color: rgba(232,178,92,.4); }
+.rec-drone.on { border-color: rgba(232,178,92,.6); background: rgba(232,178,92,.08); }
+.rec-drone-sw { width:34px; height:19px; border-radius:11px; background: rgba(244,225,193,.14); position:relative;
+  flex-shrink:0; transition:.2s; }
+.rec-drone-sw::after { content:''; position:absolute; top:2px; left:2px; width:15px; height:15px; border-radius:50%;
+  background: var(--muted); transition:.2s; }
+.rec-drone.on .rec-drone-sw { background: linear-gradient(90deg, var(--gold-deep), var(--gold)); }
+.rec-drone.on .rec-drone-sw::after { left:17px; background:#1a130a; }
+.rec-drone-txt { font:12px var(--mono); color: var(--text); }
+.rec-drone-txt em { font-style:normal; color: var(--faint); font-size:11px; }
+.rec-drone.on .rec-drone-txt { color: var(--gold-hi); }

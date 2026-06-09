@@ -30,6 +30,15 @@ DEFAULT_SECS = 30
 MAX_SECS = 300          # 5 minutes
 TAIL_S = 8.0            # let the last sounds ring out past the window
 
+# Optional drone bed baked into a recording. The live/daily drone stays OFF;
+# this is purely a "give the clip some body" option that fades in and out so
+# the take feels like one cohesive piece. cathedral's A root-fifth drone is the
+# bed (every preset is A-rooted at 432 Hz, so it sits under any of them).
+DRONE_REC_GAIN = 0.32
+DRONE_FADE_IN = 3.0
+DRONE_FADE_OUT = 5.0
+DRONE_SRC = HERE / "presets" / "cathedral" / "samples" / "drone.wav"
+
 # ---------- recording lifecycle (no numpy needed) ----------
 
 def is_active():
@@ -41,14 +50,15 @@ def load_active():
     except Exception:
         return None
 
-def start(duration, src="cli", pid=None):
+def start(duration, src="cli", pid=None, drone=False, drone_gain=DRONE_REC_GAIN):
     duration = max(1, min(MAX_SECS, int(duration)))
     REC_DIR.mkdir(parents=True, exist_ok=True)
     OUT_DIR.mkdir(exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
     meta = {"start": time.time(), "duration": duration,
             "out": f"claudio-{stamp}",
-            "pid": int(pid if pid is not None else os.getpid()), "src": src}
+            "pid": int(pid if pid is not None else os.getpid()), "src": src,
+            "drone": bool(drone), "drone_gain": float(drone_gain)}
     EVENTS.write_text("")            # truncate any previous capture
     ACTIVE.write_text(json.dumps(meta))
     return meta
@@ -134,6 +144,35 @@ def _rate_shift(a, r):
     base = np.arange(a.shape[0])
     return np.stack([np.interp(idx, base, a[:, c]) for c in range(2)], axis=1)
 
+def _drone_bed(n, gain):
+    """Stereo drone bed of length n samples, faded in/out. None if unavailable."""
+    if n <= 0:
+        return None
+    bed = None
+    if DRONE_SRC.exists():
+        a = _read_wav(str(DRONE_SRC))          # stereo float @ SR (seamless 60s loop)
+        if a.shape[0] >= 2:
+            reps = int(np.ceil(n / a.shape[0]))
+            bed = np.tile(a, (reps, 1))[:n].astype(np.float32)
+    if bed is None:                            # fallback: synthesize the A root-fifth drone
+        try:
+            import synth
+            d = np.asarray(synth.voice_drone(max(1.0, n / SR)), dtype=np.float32)
+            if d.shape[0] < n:
+                d = np.pad(d, (0, n - d.shape[0]))
+            bed = np.stack([d[:n], d[:n]], axis=1)
+        except Exception:
+            return None
+    dur_s = n / SR
+    fi = int(min(DRONE_FADE_IN, dur_s / 2) * SR)
+    fo = int(min(DRONE_FADE_OUT, dur_s / 2) * SR)
+    env = np.ones(n, dtype=np.float32)
+    if fi > 1:
+        env[:fi] = np.linspace(0.0, 1.0, fi, dtype=np.float32)
+    if fo > 1:
+        env[-fo:] = np.linspace(1.0, 0.0, fo, dtype=np.float32)
+    return bed * env[:, None] * float(gain)
+
 def _read_events():
     events = []
     if EVENTS.exists():
@@ -147,7 +186,7 @@ def _read_events():
                 pass
     return events
 
-def mix(duration, out_basename):
+def mix(duration, out_basename, drone=False, drone_gain=DRONE_REC_GAIN):
     events = _read_events()
     total_n = int((duration + TAIL_S) * SR)
     buf = np.zeros((total_n, 2), dtype=np.float32)
@@ -166,16 +205,23 @@ def mix(duration, out_basename):
             continue
         buf[s:end] += a[:end - s]
         used += 1
-    # gentle peak guard (afplay sums at the system mixer and can clip; we don't)
-    peak = float(np.max(np.abs(buf))) if buf.size else 0.0
-    if peak > 0.99:
-        buf *= (0.985 / peak)
-    # trim trailing silence, but never shorter than the requested window
+    # final length: cover the window, plus any captured-sound tail ringing past it
     nz = np.where(np.max(np.abs(buf), axis=1) > 1e-4)[0]
     end_n = int(duration * SR)
     if len(nz):
         end_n = max(end_n, min(total_n, int(nz[-1]) + SR))
     buf = buf[:end_n]
+    # optional drone bed under the whole clip, faded in/out for a cohesive feel
+    droned = False
+    if drone:
+        bed = _drone_bed(end_n, drone_gain)
+        if bed is not None:
+            buf += bed
+            droned = True
+    # gentle peak guard (afplay sums at the system mixer and can clip; we don't)
+    peak = float(np.max(np.abs(buf))) if buf.size else 0.0
+    if peak > 0.99:
+        buf *= (0.985 / peak)
 
     OUT_DIR.mkdir(exist_ok=True)
     wav_path = OUT_DIR / f"{out_basename}.wav"
@@ -187,7 +233,7 @@ def mix(duration, out_basename):
     m4a_path = _to_m4a(wav_path)
     return {"wav": str(wav_path),
             "m4a": (str(m4a_path) if m4a_path else None),
-            "events": used, "seconds": round(end_n / SR, 1)}
+            "events": used, "seconds": round(end_n / SR, 1), "drone": droned}
 
 def _to_m4a(wav_path):
     afconvert = "/usr/bin/afconvert"
@@ -210,12 +256,14 @@ def finalize():
         ACTIVE.unlink()
     except Exception:
         pass
-    return mix(meta["duration"], meta["out"])
+    return mix(meta["duration"], meta["out"],
+               drone=bool(meta.get("drone")),
+               drone_gain=float(meta.get("drone_gain", DRONE_REC_GAIN)))
 
-def run(duration, src="cli", on_progress=None):
+def run(duration, src="cli", on_progress=None, drone=False, drone_gain=DRONE_REC_GAIN):
     """Foreground: open the window, count down, then mix + save.
     Finalizes on the timer, on SIGINT (Ctrl-C), or on SIGTERM (`record stop`)."""
-    meta = start(duration, src=src, pid=os.getpid())
+    meta = start(duration, src=src, pid=os.getpid(), drone=drone, drone_gain=drone_gain)
     flag = {"stop": False}
     def _sig(_signum, _frame):
         flag["stop"] = True
@@ -236,10 +284,10 @@ if __name__ == "__main__":
     if arg == "stop":
         stop()
     else:
+        drone = "--drone" in sys.argv
         secs = DEFAULT_SECS
-        if len(sys.argv) > 2:
-            try:
-                secs = int(sys.argv[2])
-            except ValueError:
-                pass
-        run(secs, src="cli")
+        for a in sys.argv[2:]:
+            if a.lstrip("-").isdigit():
+                secs = int(a)
+                break
+        run(secs, src="web", drone=drone)

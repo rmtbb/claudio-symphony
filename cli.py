@@ -80,7 +80,8 @@ MIDI songs + quantization
   grid <subdivision>               Beats per cell (0.25=16th, 0.5=8th, 1=quarter)
 
 Record & share
-  record [seconds]                 Record a clip of your session (default 30s, max 300s)
+  record [seconds] [--drone]       Record a clip of your session (default 30s, max 300s)
+                                   --drone bakes in a faded drone bed (off by default)
   record stop                      Finish the current recording now and save
   record status / list             Show recording state / list saved clips
                                    → saved to recordings/ as .wav + .m4a; share your sounds!
@@ -1401,6 +1402,12 @@ def cmd_coffee(args):
 
 def cmd_record(args):
     import record as rec
+    args = list(args)
+    drone = False
+    for f in ("--drone", "-d", "drone"):
+        if f in args:
+            drone = True
+            args = [a for a in args if a != f]
     sub = args[0] if args else None
     if sub in ("stop", "end", "finish"):
         m = rec.stop()
@@ -1438,17 +1445,19 @@ def cmd_record(args):
                   f"(default {rec.DEFAULT_SECS}s, max {rec.MAX_SECS}s)")
             return
     secs = max(1, min(rec.MAX_SECS, secs))
+    drone_note = "  🌫️ drone bed: on (fades in/out)" if drone else ""
     print(f"🔴 Recording up to {secs}s of Claudio — go drive your Claude sessions. "
-          f"Ctrl-C to stop early.\n")
+          f"Ctrl-C to stop early.{drone_note}\n")
     def prog(rem, n):
         sys.stdout.write(f"\r   ⏺  {rem:5.1f}s left  ·  {n} sound{'s' if n != 1 else ''} captured    ")
         sys.stdout.flush()
-    res = rec.run(secs, src="cli", on_progress=prog)
+    res = rec.run(secs, src="cli", on_progress=prog, drone=drone)
     sys.stdout.write("\r" + " " * 64 + "\r")
-    if not res or res.get("events", 0) == 0:
+    if not res or (res.get("events", 0) == 0 and not res.get("drone")):
         print("…no sounds were captured. Make sure claudio is ON and a session was active.")
         return
-    print(f"✅ Saved a {res['seconds']}s clip · {res['events']} sounds")
+    extra = " + drone" if res.get("drone") else ""
+    print(f"✅ Saved a {res['seconds']}s clip · {res['events']} sounds{extra}")
     print(f"   🎧  {res['wav']}")
     if res.get("m4a"):
         print(f"   📦  {res['m4a']}   ← small file, easy to share")
