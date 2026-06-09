@@ -1,11 +1,11 @@
 # Claudio Symphony 🎼
 
-> **Hear your Claude Code sessions.** Every tool call, file edit, and finished thought becomes a soft, in-key sound — ambient music that breathes with your AI pair-programmer.
+> **Hear your Claude Code sessions.** Every tool call, file edit, and finished thought becomes a soft, in-key sound — ambient music that moves with your AI pair-programmer.
 
 ```
                     ╭─────────────────────────────────────╮
                     │                                     │
-                    │    every bash command is a breath   │
+                    │    every bash command, a low tone   │
                     │    every tool call is a soft pluck  │
                     │    every sub-agent finishing,       │
                     │    a tuned bell from across         │
@@ -14,9 +14,12 @@
                     ╰─────────────────────────────────────╯
 ```
 
-Claudio listens to Claude Code's hook events and turns them into generative, always-in-key ambient music. Twenty tool calls in three seconds sound like one gust of wind, not twenty hammer hits — because that's the difference between music and Slack notifications.
+Claudio listens to Claude Code's hook events and turns them into generative, always-in-key ambient music. Twenty tool calls in three seconds become one soft blur of tones, not twenty separate dings — because that's the difference between music and Slack notifications.
 
-It is **not** a notification system. It's a room your Claude session is happening inside. After about twenty minutes you stop hearing it as *music* and start hearing it as *the room* — and the room breathes with your work.
+It is **not** a notification system. It's a room your Claude session is happening inside. After about twenty minutes you stop hearing it as *music* and start hearing it as *the room* — and the room moves with your work.
+
+![Claudio web console — a living constellation of voices that bloom in real time as Claude plays them](docs/web-console.png)
+> *The `claudio web` console: each voice is a glowing orb that lights up the instant Claude triggers it. Tune everything live; switch any of 36 presets with a click.*
 
 ---
 
@@ -50,10 +53,10 @@ Bright, satisfying, soft attacks. The "thock" of felt on wood for tool calls, ka
 ### 🏛️  `cathedral` — the lush one
 > *Modal drone bed with a full event palette. Eight voices. Always-on. The Eno / Budd / Frahm lane.*
 
-A low drone never stops. Soft felt-piano notes resolve as tools complete; faint air-hisses pass by during bash commands; a tuned bell rings when a sub-agent finishes. Nothing has a melody, nothing repeats — the room just breathes with the work.
+A low drone never stops. Soft felt-piano notes resolve as tools complete; faint airy tones pass by during bash commands; a tuned bell rings when a sub-agent finishes. Nothing has a melody, nothing repeats — the room just moves with the work.
 
 ### 🌧️  `rainfall` — the quiet one
-> *Sparse drops in a still room with rare long swells. Silence is the canvas.*
+> *Sparse drops in a still room with rare long blooms. Silence is the canvas.*
 
 Most of the time you hear nothing. PostToolUse plays a tiny 250 ms drop — a single bead of water on a still pond. Once a minute or two, a 25-second pad blooms in the distance and recedes. Late-night, deep-focus, almost-silent.
 
@@ -217,7 +220,7 @@ event.py  (~50 ms total)
 
 Three principles shaped every design choice:
 
-1. **Inverse frequency → prominence.** Rare events get the foreground; common events whisper. The end-of-turn swell feels loud because it happens once every few minutes; tool-starts get the airiest, most disposable voice because they fire 5–30× a minute.
+1. **Inverse frequency → prominence.** Rare events get the foreground; common events whisper. The end-of-turn bloom feels loud because it happens once every few minutes; tool-starts get the softest, most disposable voice because they fire 5–30× a minute.
 2. **No tempo, no melody, no notification DNA.** With nothing to predict and no memorable hook, the ear settles into landscape mode instead of flinch-mode. The instant something sounds like a notification, your nervous system flags every event as a possible interruption.
 3. **The reverb tail is the glue.** A long tail on every voice means dense bursts smear into a wash rather than stack as discrete hits. The same patch handles the calm session and the chaotic one — the wash gets *thicker*, not *louder*.
 
@@ -231,7 +234,7 @@ I wanted my Claude Code sessions to make soothing, pleasant sounds — all in ke
 
 Then something happened while I was building it: I started to *rely* on it. I could suddenly hear what was happening across all of my active coding sessions — which one was busy, which had gone quiet, which just finished. What began as a small idea turned into something I genuinely can't use Claude Code without.
 
-Slack pings condition you to flinch. A cathedral does not. A bell tuned to the room you're working in becomes a *fact about the room*, not an interruption. The hope is that the room starts to breathe with your work — and that you fall for it the way I did. 🌙
+Slack pings condition you to flinch. A cathedral does not. A bell tuned to the room you're working in becomes a *fact about the room*, not an interruption. The hope is that the room starts to move with your work — and that you fall for it the way I did. 🌙
 
 ---
 
