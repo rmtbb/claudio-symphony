@@ -27,6 +27,7 @@
       </div>
       <div class="spacer"></div>
       <button class="browse-btn" id="browseBtn">⊞ Browse presets</button>
+      <button class="rec-btn" id="recBtn" title="Record a clip of your session to share"><span class="rec-dot"></span><span id="recBtnLbl">Rec</span></button>
       <button class="tip-btn" id="tipBtn" title="Support Claudio — buy me a coffee">☕ Tip</button>
       <div class="pulse" id="pulse"><span class="ring"></span><span id="pulseTxt">idle</span></div>
       <div class="master">
@@ -129,6 +130,21 @@
         <button class="browser-close" id="browserClose">✕</button>
       </header>
       <div class="browser-grid" id="browserGrid"></div>
+    </div>
+  </div>
+
+  <!-- record overlay -->
+  <div class="recmodal" id="recModal" hidden>
+    <div class="rec-panel">
+      <header class="rec-head">
+        <div>
+          <div class="rec-title">🎙️ Record your session</div>
+          <div class="rec-sub">Capture a clip of Claudio playing, then share how your workflow sounds.</div>
+        </div>
+        <button class="rec-close" id="recClose">✕</button>
+      </header>
+      <div class="rec-body" id="recBody"></div>
+      <div class="rec-list" id="recList"></div>
     </div>
   </div>
 

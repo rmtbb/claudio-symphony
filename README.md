@@ -108,6 +108,25 @@ Pure Python standard library on the backend (`127.0.0.1` only), Fraunces + Hanke
 
 ---
 
+## 🎙️ Record & share your sounds
+
+Found a preset + workflow that sounds *amazing*? Capture it and show it off.
+
+```bash
+claudio record           # record 30 seconds (the default)
+claudio record 120       # record up to 5 minutes (300s max)
+claudio record stop      # finish early and save right now
+claudio record list      # see your saved clips
+```
+
+Here's the neat part: because Claudio already knows every sound it plays, recording **doesn't touch your mic or system audio** — it mixes the *exact* samples back into one clean track. Only Claudio, no room noise, no other apps, no virtual-audio-device setup. Clips land in `recordings/` as a `.wav` plus a small `.m4a` for easy sharing.
+
+Prefer buttons? Hit **● Rec** in `claudio web` — pick a length, go work in your sessions, and grab the clip with a built-in player and download link.
+
+> **Share it! 🎧** Post your clip with the preset name so others can hear how their sessions could sound. The more sounds people share, the richer Claudio gets — and if you tune a combination you love, [open a PR with the preset](#-make-your-own-preset) too.
+
+---
+
 ## 📦 Install
 
 ```bash

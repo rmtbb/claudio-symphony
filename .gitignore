@@ -15,6 +15,9 @@ config.json
 *.tmp
 *.pid
 
+# Recorded session clips — user content; share them, don't commit them
+recordings/
+
 # macOS
 .DS_Store
 

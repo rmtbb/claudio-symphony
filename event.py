@@ -26,6 +26,8 @@ CONFIG = HERE / "config.json"
 SESSIONS_FILE = STATE / "sessions.json"
 RULES_FILE = STATE / "rules.json"
 LOG = LOGS / "event.log"
+REC_ACTIVE = STATE / "recording" / "active.json"     # presence = recording window open
+REC_EVENTS = STATE / "recording" / "events.jsonl"    # one line per sound played
 STATE.mkdir(exist_ok=True); LOGS.mkdir(exist_ok=True)
 
 DEFAULT_PRESET = "meadow"
@@ -35,6 +37,30 @@ def log(msg):
     try:
         with LOG.open("a") as f:
             f.write(f"{time.strftime('%H:%M:%S')} {msg}\n")
+    except Exception:
+        pass
+
+# ---------- recording capture (dependency-free; mixing lives in record.py) ----------
+
+def _rec_window():
+    """If a recording is open, return (start_epoch, duration_s); else None.
+    One cheap stat in the common (not-recording) case."""
+    try:
+        if not REC_ACTIVE.exists():
+            return None
+        m = json.loads(REC_ACTIVE.read_text())
+        return (float(m["start"]), float(m["duration"]))
+    except Exception:
+        return None
+
+def _rec_log(sample_path, gain_v, rate, t_play):
+    """Append one sound to the recording timeline. O_APPEND keeps concurrent
+    hook processes from clobbering each other (lines are < PIPE_BUF)."""
+    try:
+        line = json.dumps({"t": round(float(t_play), 4), "wav": str(sample_path),
+                           "v": round(float(gain_v), 4), "r": round(float(rate or 1.0), 5)})
+        with REC_EVENTS.open("a") as f:
+            f.write(line + "\n")
     except Exception:
         pass
 
@@ -539,6 +565,9 @@ def play(sample_path, gain_linear, shift_semitones=0, delay_s=0.0,
         base_rate *= 1.0 + random.uniform(-0.004, 0.004)
     rate = max(0.25, min(4.0, base_rate)) if (shift_semitones or rate_jitter) else None
 
+    rec = _rec_window()           # capture this play() into the recording, if one is open
+    t0 = time.time()
+
     def _spawn(gain_v, extra_delay):
         cmd = list(cmd_base) + [f"{gain_v:.3f}"]
         if rate is not None:
@@ -558,6 +587,10 @@ def play(sample_path, gain_linear, shift_semitones=0, delay_s=0.0,
             )
         except Exception as e:
             log(f"afplay launch failed: {e}")
+        if rec is not None:
+            t_play = (t0 - rec[0]) + delay_s + extra_delay
+            if 0.0 <= t_play <= rec[1]:
+                _rec_log(sample_path, gain_v, rate, t_play)
 
     _spawn(v, 0.0)
     if echo and isinstance(echo, dict):

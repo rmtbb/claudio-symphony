@@ -168,6 +168,67 @@ async function openTip() {
   renderTip();
 }
 function closeTip() { $('#tipModal').hidden = true; }
+
+/* ---------------- record & share ---------------- */
+const REC_DURATIONS = [[15, '15s'], [30, '30s'], [60, '1m'], [120, '2m'], [300, '5m']];
+let recPick = 30, recPoll = null;
+function openRec() { $('#recModal').hidden = false; refreshRec(); recPoll = setInterval(refreshRec, 1000); }
+function closeRec() { $('#recModal').hidden = true; if (recPoll) { clearInterval(recPoll); recPoll = null; } }
+async function refreshRec() {
+  let s; try { s = await api.get('/api/record/status'); } catch (e) { return; }
+  renderRecBody(s); renderRecList(s);
+  const btn = $('#recBtn'), lbl = $('#recBtnLbl');
+  btn.classList.toggle('on', !!s.active);
+  lbl.textContent = s.active ? `${Math.ceil(s.remaining)}s` : 'Rec';
+}
+function renderRecBody(s) {
+  const body = $('#recBody');
+  if (s.active) {
+    const pct = s.duration ? Math.max(0, Math.min(100, 100 * (1 - s.remaining / s.duration))) : 0;
+    body.innerHTML = `
+      <div class="rec-live">
+        <div class="rec-live-top"><span class="rec-pulse"></span>
+          <span class="rec-rem">${Math.ceil(s.remaining)}s left</span>
+          <span class="rec-cap">${s.events || 0} sound${s.events === 1 ? '' : 's'} captured</span></div>
+        <div class="rec-bar"><span style="width:${pct}%"></span></div>
+        <button class="rec-stop" id="recStop">■ Stop &amp; save now</button>
+      </div>`;
+    body.querySelector('#recStop').onclick = async () => { await api.post('/api/record/stop', {}); toast('saving your clip…'); setTimeout(refreshRec, 600); };
+  } else {
+    body.innerHTML = `
+      <div class="rec-idle">
+        <div class="rec-pick">${REC_DURATIONS.map(([v, l]) => `<button class="rec-chip${v === recPick ? ' on' : ''}" data-v="${v}">${l}</button>`).join('')}</div>
+        <button class="rec-go" id="recGo">● Start recording</button>
+        <div class="rec-hint">Then go work in your Claude sessions — sounds are captured as Claude plays them.</div>
+      </div>`;
+    body.querySelectorAll('.rec-chip').forEach(c => c.onclick = () => { recPick = +c.dataset.v; renderRecBody(s); });
+    body.querySelector('#recGo').onclick = async () => {
+      const r = await api.post('/api/record/start', { seconds: recPick });
+      if (r && r.ok === false) { toast(r.msg || 'already recording'); }
+      else { toast(`<span class="g">recording</span> ${recPick}s — go make some sounds`); }
+      setTimeout(refreshRec, 500);
+    };
+  }
+}
+let recSeen = -1;
+function renderRecList(s) {
+  const list = $('#recList'); const recs = s.recordings || [];
+  // toast when a new clip lands
+  if (recSeen >= 0 && recs.length > recSeen && !s.active) toast('✅ clip saved — scroll down to play or download');
+  recSeen = recs.length;
+  if (!recs.length) { list.innerHTML = '<div class="rec-empty">No clips yet. Your recordings will show here.</div>'; return; }
+  // prefer one row per take: pair .m4a/.wav by basename, show smaller as the player
+  const byBase = {};
+  recs.forEach(r => { const base = r.name.replace(/\.(wav|m4a)$/, ''); (byBase[base] ||= []).push(r); });
+  list.innerHTML = '<div class="rec-list-h">Your clips</div>' + Object.entries(byBase).map(([base, items]) => {
+    const m4a = items.find(i => i.name.endsWith('.m4a')); const wav = items.find(i => i.name.endsWith('.wav'));
+    const play = m4a || wav;
+    const dls = items.map(i => `<a class="rec-dl" href="${i.url}" download>${i.name.endsWith('.m4a') ? 'm4a' : 'wav'} ↓</a>`).join('');
+    return `<div class="rec-row"><div class="rec-name">${base}</div>
+      <audio class="rec-audio" controls preload="none" src="${play.url}"></audio>
+      <div class="rec-dls">${dls}</div></div>`;
+  }).join('');
+}
 function renderTip() {
   const grid = $('#tipGrid'); grid.innerHTML = '';
   (DONATE.methods || []).forEach(m => {
@@ -393,10 +454,14 @@ function wireGlobal() {
   $('#tipBtn').onclick = openTip;
   $('#tipClose').onclick = closeTip;
   $('#tipModal').onclick = (e) => { if (e.target.id === 'tipModal') closeTip(); };
+  $('#recBtn').onclick = openRec;
+  $('#recClose').onclick = closeRec;
+  $('#recModal').onclick = (e) => { if (e.target.id === 'recModal') closeRec(); };
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     if (!$('#browser').hidden) closeBrowser();
     else if (!$('#tipModal').hidden) closeTip();
+    else if (!$('#recModal').hidden) closeRec();
   });
   const m = $('#master');
   m.oninput = () => { $('#masterVal').textContent = fmt(m.value,2); setFill(m); };

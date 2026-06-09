@@ -79,6 +79,12 @@ MIDI songs + quantization
   tempo <bpm>                      Set master quantization tempo
   grid <subdivision>               Beats per cell (0.25=16th, 0.5=8th, 1=quarter)
 
+Record & share
+  record [seconds]                 Record a clip of your session (default 30s, max 300s)
+  record stop                      Finish the current recording now and save
+  record status / list             Show recording state / list saved clips
+                                   → saved to recordings/ as .wav + .m4a; share your sounds!
+
 Support
   coffee                           Show on-chain tip addresses (alias: tip, donate)
 """
@@ -1391,6 +1397,65 @@ def cmd_coffee(args):
     print("  QR codes + one-tap copy live in the web panel:  claudio web  →  ☕ Tip")
     print()
 
+# ---------- record ----------
+
+def cmd_record(args):
+    import record as rec
+    sub = args[0] if args else None
+    if sub in ("stop", "end", "finish"):
+        m = rec.stop()
+        print("⏹  Stopping & saving the current recording…" if m else "Nothing is recording.")
+        return
+    if sub in ("status", "show"):
+        s = rec.status()
+        if s["active"]:
+            print(f"🔴 recording — {s['remaining']}s left, {s['events']} sound(s) captured")
+        else:
+            print("Not recording.")
+        recs = s.get("recordings", [])
+        if recs:
+            print(f"recordings/ ({len(recs)}):")
+            for r in recs[:10]:
+                print(f"  {r['name']}  ({r['size'] // 1024} KB)")
+        return
+    if sub in ("list", "ls"):
+        recs = rec.list_recordings()
+        if not recs:
+            print("No recordings yet — try:  claudio record")
+            return
+        for r in recs:
+            print(f"  recordings/{r['name']}  ({r['size'] // 1024} KB)")
+        return
+    if rec.is_active():
+        print("A recording is already running. `claudio record stop` to finish it.")
+        return
+    secs = rec.DEFAULT_SECS
+    if sub is not None:
+        try:
+            secs = int(sub)
+        except ValueError:
+            print(f"usage: claudio record [seconds|stop|status|list]  "
+                  f"(default {rec.DEFAULT_SECS}s, max {rec.MAX_SECS}s)")
+            return
+    secs = max(1, min(rec.MAX_SECS, secs))
+    print(f"🔴 Recording up to {secs}s of Claudio — go drive your Claude sessions. "
+          f"Ctrl-C to stop early.\n")
+    def prog(rem, n):
+        sys.stdout.write(f"\r   ⏺  {rem:5.1f}s left  ·  {n} sound{'s' if n != 1 else ''} captured    ")
+        sys.stdout.flush()
+    res = rec.run(secs, src="cli", on_progress=prog)
+    sys.stdout.write("\r" + " " * 64 + "\r")
+    if not res or res.get("events", 0) == 0:
+        print("…no sounds were captured. Make sure claudio is ON and a session was active.")
+        return
+    print(f"✅ Saved a {res['seconds']}s clip · {res['events']} sounds")
+    print(f"   🎧  {res['wav']}")
+    if res.get("m4a"):
+        print(f"   📦  {res['m4a']}   ← small file, easy to share")
+    print()
+    print("   🎙️  Love how your sessions sound? Share the clip (post it with the preset")
+    print("       name) so others can hear it — the more sounds people share, the better.")
+
 # ---------- main ----------
 
 def main(argv):
@@ -1430,6 +1495,7 @@ def main(argv):
     elif cmd == "tempo":                cmd_tempo(args)
     elif cmd == "grid":                 cmd_grid(args)
     elif cmd in ("coffee", "tip", "donate"): cmd_coffee(args)
+    elif cmd in ("record", "rec"):      cmd_record(args)
     else:
         print(__doc__)
 

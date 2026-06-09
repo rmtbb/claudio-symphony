@@ -10,7 +10,7 @@ the live-activity view reads the very markers event.py touches when Claude works
 Run:  python3 webui.py [--port 8788] [--open]
   or: claudio web
 """
-import os, sys, json, time, random, threading, subprocess, urllib.parse
+import os, sys, json, time, random, signal, threading, subprocess, urllib.parse
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -22,6 +22,11 @@ CONFIG = HERE / "config.json"
 RULES_FILE = STATE / "rules.json"
 SESSIONS_FILE = STATE / "sessions.json"
 EVENT_PY = str(HERE / "event.py")
+RECORD_PY = str(HERE / "record.py")
+REC_DIR = STATE / "recording"
+REC_ACTIVE = REC_DIR / "active.json"
+REC_EVENTS = REC_DIR / "events.jsonl"
+OUT_DIR = HERE / "recordings"
 WEB = HERE / "web"
 SR_HINT = 44100
 
@@ -252,7 +257,29 @@ def activity(name):
 
 CT = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
       ".js": "text/javascript; charset=utf-8", ".json": "application/json",
-      ".wav": "audio/wav", ".svg": "image/svg+xml", ".woff2": "font/woff2"}
+      ".wav": "audio/wav", ".m4a": "audio/mp4",
+      ".svg": "image/svg+xml", ".woff2": "font/woff2"}
+
+def record_status():
+    out = {"active": False, "recordings": [], "max": 300, "default": 30}
+    if OUT_DIR.exists():
+        for p in sorted(OUT_DIR.glob("*"), reverse=True):
+            if p.suffix in (".wav", ".m4a"):
+                out["recordings"].append({
+                    "name": p.name, "size": p.stat().st_size,
+                    "url": "/recordings/" + urllib.parse.quote(p.name)})
+    try:
+        if REC_ACTIVE.exists():
+            m = json.loads(REC_ACTIVE.read_text())
+            elapsed = time.time() - m["start"]
+            events = 0
+            try: events = sum(1 for _ in REC_EVENTS.open())
+            except Exception: pass
+            out.update(active=True, duration=m["duration"], events=events,
+                       remaining=max(0.0, round(m["duration"] - elapsed, 1)))
+    except Exception:
+        pass
+    return out
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "ClaudioWeb/1.0"
@@ -296,6 +323,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, activity(name))
         if path == "/api/donate":
             return self._send(200, load_json(HERE / "donate.json", {"methods": []}))
+        if path == "/api/record/status":
+            return self._send(200, record_status())
+        if path.startswith("/recordings/"):
+            fn = urllib.parse.unquote(path[len("/recordings/"):])
+            f = OUT_DIR / fn
+            if f.name != fn or not f.exists():     # block path traversal / missing
+                return self._send(404, {"error": "not found"})
+            return self._file(f)
         if path == "/sample":
             preset = (q.get("preset") or [active_preset_name()])[0]
             voice = (q.get("voice") or [""])[0]
@@ -392,6 +427,24 @@ class Handler(BaseHTTPRequestHandler):
                 return self._preset_reset(b)
             if path == "/api/test":
                 fire_test(b.get("name"))
+                return self._send(200, {"ok": True})
+            if path == "/api/record/start":
+                if REC_ACTIVE.exists():
+                    return self._send(200, {"ok": False, "msg": "already recording"})
+                try: secs = int(b.get("seconds", 30))
+                except Exception: secs = 30
+                secs = max(1, min(300, secs))
+                REC_DIR.mkdir(parents=True, exist_ok=True)
+                subprocess.Popen(["/usr/bin/env", "python3", RECORD_PY, "run", str(secs)],
+                                 cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 start_new_session=True, close_fds=True)
+                return self._send(200, {"ok": True, "seconds": secs})
+            if path == "/api/record/stop":
+                try:
+                    m = json.loads(REC_ACTIVE.read_text())
+                    os.kill(int(m["pid"]), signal.SIGTERM)
+                except Exception:
+                    pass
                 return self._send(200, {"ok": True})
         except KeyError as e:
             return self._send(400, {"error": f"missing {e}"})
