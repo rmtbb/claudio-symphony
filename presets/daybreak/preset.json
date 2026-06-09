@@ -1,0 +1,175 @@
+{
+  "name": "daybreak",
+  "description": "Dawn-bright and minimal. A curious music-box, warm marimba, and sun catching on water, over soft blooms and a low felt anchor. A major pentatonic \u2014 gentle, simple, never dreary.",
+  "drone": null,
+  "master_gain": 0.46,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [
+    9,
+    4
+  ],
+  "scale_pitches": [
+    57,
+    59,
+    61,
+    64,
+    66,
+    69,
+    71,
+    73,
+    76,
+    78,
+    81
+  ],
+  "voices": {
+    "dewdrop": {
+      "dir": "dewdrop",
+      "mioi": 0.45,
+      "gain": 0.34,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.18,
+        "decay": 2.2,
+        "predelay_ms": 24,
+        "brightness": 0.55
+      }
+    },
+    "lullaby": {
+      "dir": "lullaby",
+      "mioi": 1.8,
+      "gain": 0.42,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.18,
+        "decay": 2.2,
+        "predelay_ms": 24,
+        "brightness": 0.5
+      }
+    },
+    "marimba": {
+      "dir": "marimba",
+      "mioi": 0.35,
+      "gain": 0.4,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.18,
+        "decay": 2,
+        "predelay_ms": 22,
+        "brightness": 0.5
+      }
+    },
+    "light_drop": {
+      "dir": "light_drop",
+      "mioi": 2.5,
+      "gain": 0.4,
+      "reverb": {
+        "wet": 0.4,
+        "decay": 2.4,
+        "predelay_ms": 20,
+        "brightness": 0.7
+      },
+      "delay": {
+        "ms": 260,
+        "feedback": 0.34,
+        "count": 3
+      }
+    },
+    "sunglint": {
+      "dir": "sunglint",
+      "mioi": 3,
+      "gain": 0.4,
+      "reverb": {
+        "wet": 0.4,
+        "decay": 2.4,
+        "predelay_ms": 60,
+        "brightness": 0.7
+      },
+      "delay": {
+        "ms": 320,
+        "feedback": 0.28,
+        "count": 2
+      }
+    },
+    "heart_bloom": {
+      "dir": "heart_bloom",
+      "mioi": 14,
+      "gain": 0.42,
+      "reverb": {
+        "wet": 0.5,
+        "decay": 4.5,
+        "predelay_ms": 45,
+        "brightness": 0.45
+      }
+    },
+    "aubade": {
+      "dir": "aubade",
+      "mioi": 10,
+      "gain": 0.44,
+      "reverb": {
+        "wet": 0.5,
+        "decay": 5,
+        "predelay_ms": 45,
+        "brightness": 0.42
+      }
+    },
+    "deep_anchor": {
+      "dir": "deep_anchor",
+      "mioi": 5,
+      "gain": 0.44,
+      "reverb": {
+        "wet": 0.12,
+        "decay": 2.2,
+        "predelay_ms": 25,
+        "brightness": 0.3
+      }
+    },
+    "keystone": {
+      "dir": "keystone",
+      "mioi": 5,
+      "gain": 0.44,
+      "reverb": {
+        "wet": 0.16,
+        "decay": 2.2,
+        "predelay_ms": 25,
+        "brightness": 0.42
+      }
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "dewdrop",
+      "by_tool": {
+        "Edit": "light_drop",
+        "Write": "light_drop",
+        "MultiEdit": "light_drop",
+        "NotebookEdit": "light_drop"
+      }
+    },
+    "PostToolUse": {
+      "default": "marimba",
+      "on_failure": "sunglint"
+    },
+    "Stop": {
+      "default": "aubade"
+    },
+    "SessionStart": {
+      "default": "heart_bloom"
+    },
+    "SessionEnd": {
+      "default": "deep_anchor"
+    },
+    "SubagentStop": {
+      "default": "lullaby"
+    },
+    "UserPromptSubmit": {
+      "default": "dewdrop"
+    },
+    "Notification": {
+      "default": "light_drop"
+    },
+    "PreCompact": {
+      "default": "keystone"
+    }
+  }
+}

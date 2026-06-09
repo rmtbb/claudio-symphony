@@ -30,3 +30,6 @@ venv/
 .vscode/
 .idea/
 *.swp
+
+# Local-only: graphify knowledge-graph artifact
+graphify-out/

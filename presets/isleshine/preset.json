@@ -1,0 +1,127 @@
+{
+  "name": "isleshine",
+  "description": "Bright steel pans ringing on a sunny beach, tropical warmth shimmering off the water. Struck steel-drum tones — a deep round low-pan boom holding the island groove floor, a singing tenor-pan lead with shimmering octave and quick metallic glint, a snappier ping-pan answering in sunny counter-melody, a creamy double-second harmony, fast-decaying high pan pings, tiny top-pan flicks scattering like sun on waves, a rolled-pan bloom and a shimmering pan-roll cloud, a near-dry rim-tap pulse, and a beaming little chirp. A major pentatonic, additive and clean, calypso sunshine — carefree, beaming, pure summer joy. Never dark, never harsh.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [9, 4],
+  "scale_pitches": [57, 59, 61, 64, 66, 69, 71, 73, 76, 78, 81],
+  "voices": {
+    "pan_boom": {
+      "dir": "pan_boom",
+      "mioi": 12,
+      "gain": 0.5,
+      "tonal_anchor_midi": 33,
+      "reverb": {"wet": 0.1, "decay": 1.6, "predelay_ms": 12, "brightness": 0.32}
+    },
+    "pan_lead": {
+      "dir": "pan_lead",
+      "mioi": 2.0,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "reverb": {"wet": 0.2, "decay": 1.8, "predelay_ms": 18, "brightness": 0.6},
+      "delay": {"ms": 300, "feedback": 0.2, "count": 2}
+    },
+    "pan_ping": {
+      "dir": "pan_ping",
+      "mioi": 2.0,
+      "gain": 0.48,
+      "rate_jitter": true,
+      "reverb": {"wet": 0.2, "decay": 1.7, "predelay_ms": 18, "brightness": 0.62},
+      "delay": {"ms": 280, "feedback": 0.22, "count": 2}
+    },
+    "pan_double": {
+      "dir": "pan_double",
+      "mioi": 2.4,
+      "gain": 0.46,
+      "rate_jitter": true,
+      "reverb": {"wet": 0.18, "decay": 2.2, "predelay_ms": 22, "brightness": 0.5}
+    },
+    "pan_chime": {
+      "dir": "pan_chime",
+      "mioi": 2.4,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.36, "decay": 3.0, "predelay_ms": 28, "brightness": 0.62}
+    },
+    "sunflick": {
+      "dir": "sunflick",
+      "mioi": 0.4,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.22, "decay": 1.8, "predelay_ms": 14, "brightness": 0.62},
+      "delay": {"ms": 260, "feedback": 0.24, "count": 3}
+    },
+    "pan_bloom": {
+      "dir": "pan_bloom",
+      "mioi": 16,
+      "gain": 0.44,
+      "tonal_anchor_midi": 57,
+      "reverb": {"wet": 0.5, "decay": 5.0, "predelay_ms": 45, "brightness": 0.5}
+    },
+    "pan_roll": {
+      "dir": "pan_roll",
+      "mioi": 22,
+      "gain": 0.5,
+      "reverb": {"wet": 0.48, "decay": 4.8, "predelay_ms": 42, "brightness": 0.5}
+    },
+    "rim_tap": {
+      "dir": "rim_tap",
+      "mioi": 0.14,
+      "gain": 0.55,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 69,
+      "reverb": {"wet": 0.04, "decay": 0.5, "predelay_ms": 8, "brightness": 0.45}
+    },
+    "pan_chirp": {
+      "dir": "pan_chirp",
+      "mioi": 0.42,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.12, "decay": 1.5, "predelay_ms": 12, "brightness": 0.62}
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "rim_tap",
+      "by_tool": {
+        "Edit": "rim_tap",
+        "Write": "rim_tap",
+        "MultiEdit": "rim_tap",
+        "NotebookEdit": "rim_tap"
+      }
+    },
+    "PostToolUse": {
+      "default": "pan_lead",
+      "by_tool": {
+        "Read": "pan_double",
+        "Grep": "pan_double",
+        "Glob": "pan_double"
+      },
+      "on_failure": "pan_ping"
+    },
+    "Stop": {
+      "default": "pan_chime"
+    },
+    "SessionStart": {
+      "default": "pan_roll"
+    },
+    "SessionEnd": {
+      "default": "pan_boom"
+    },
+    "SubagentStop": {
+      "default": "sunflick"
+    },
+    "UserPromptSubmit": {
+      "default": "pan_double"
+    },
+    "Notification": {
+      "default": "pan_chirp",
+      "on_failure": "sunflick"
+    },
+    "PreCompact": {
+      "default": "pan_bloom"
+    }
+  }
+}

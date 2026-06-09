@@ -1,0 +1,125 @@
+{
+  "name": "choirloft",
+  "description": "Warm human voices singing oo and ah, angelic and bright — sunlight through stained glass. Soft additive vocal pads with formant warmth and gentle vibrato, ooh and ahh layered: a grounding bass-voice hum, a soprano ooh swelling in over the radiant melody, an alto ahh harmonizing a counter-line, a sweet tenor mmm in the middle, a pure boy-soprano ping, breathy high vocal sparkles, a full layered choir-bloom, a shimmering chorused vocal cluster, the soft intake-of-breath texture of a choir loft, and a joyful little angelic chirp. A major @ A=432, additive and warm, choir/angelic but joyful and major — radiant and human, never mournful.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [9, 4],
+  "scale_pitches": [57, 59, 61, 62, 64, 66, 68, 69, 71, 73, 74, 76, 78, 80, 81],
+  "voices": {
+    "choir_bass": {
+      "dir": "choir_bass",
+      "mioi": 11,
+      "gain": 0.5,
+      "tonal_anchor_midi": 33,
+      "reverb": {"wet": 0.30, "decay": 3.0, "predelay_ms": 25, "brightness": 0.3}
+    },
+    "soprano_ooh": {
+      "dir": "soprano_ooh",
+      "mioi": 2.4,
+      "gain": 0.48,
+      "reverb": {"wet": 0.42, "decay": 4.2, "predelay_ms": 32, "brightness": 0.55},
+      "delay": {"ms": 360, "feedback": 0.18, "count": 2}
+    },
+    "alto_ahh": {
+      "dir": "alto_ahh",
+      "mioi": 2.6,
+      "gain": 0.46,
+      "reverb": {"wet": 0.40, "decay": 4.0, "predelay_ms": 30, "brightness": 0.58}
+    },
+    "tenor_mmm": {
+      "dir": "tenor_mmm",
+      "mioi": 2.8,
+      "gain": 0.46,
+      "tonal_anchor_midi": 57,
+      "reverb": {"wet": 0.34, "decay": 3.4, "predelay_ms": 28, "brightness": 0.42}
+    },
+    "boy_ping": {
+      "dir": "boy_ping",
+      "mioi": 2.6,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.40, "decay": 3.6, "predelay_ms": 30, "brightness": 0.6},
+      "delay": {"ms": 320, "feedback": 0.2, "count": 2}
+    },
+    "vocal_sparkle": {
+      "dir": "vocal_sparkle",
+      "mioi": 0.5,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.30, "decay": 2.4, "predelay_ms": 18, "brightness": 0.62},
+      "delay": {"ms": 280, "feedback": 0.22, "count": 3}
+    },
+    "choir_bloom": {
+      "dir": "choir_bloom",
+      "mioi": 16,
+      "gain": 0.44,
+      "tonal_anchor_midi": 69,
+      "reverb": {"wet": 0.52, "decay": 5.2, "predelay_ms": 45, "brightness": 0.5}
+    },
+    "vocal_cluster": {
+      "dir": "vocal_cluster",
+      "mioi": 22,
+      "gain": 0.5,
+      "reverb": {"wet": 0.50, "decay": 5.0, "predelay_ms": 42, "brightness": 0.5}
+    },
+    "choral_breath": {
+      "dir": "choral_breath",
+      "mioi": 0.5,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 57,
+      "reverb": {"wet": 0.06, "decay": 0.8, "predelay_ms": 10, "brightness": 0.45}
+    },
+    "angel_chirp": {
+      "dir": "angel_chirp",
+      "mioi": 0.42,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.14, "decay": 1.8, "predelay_ms": 12, "brightness": 0.62}
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "choral_breath",
+      "by_tool": {
+        "Edit": "boy_ping",
+        "Write": "boy_ping",
+        "MultiEdit": "boy_ping",
+        "NotebookEdit": "boy_ping"
+      }
+    },
+    "PostToolUse": {
+      "default": "soprano_ooh",
+      "by_tool": {
+        "Read": "alto_ahh",
+        "Grep": "alto_ahh",
+        "Glob": "alto_ahh"
+      },
+      "on_failure": "tenor_mmm"
+    },
+    "Stop": {
+      "default": "boy_ping"
+    },
+    "SessionStart": {
+      "default": "vocal_cluster"
+    },
+    "SessionEnd": {
+      "default": "choir_bass"
+    },
+    "SubagentStop": {
+      "default": "vocal_sparkle"
+    },
+    "UserPromptSubmit": {
+      "default": "alto_ahh"
+    },
+    "Notification": {
+      "default": "angel_chirp",
+      "on_failure": "vocal_sparkle"
+    },
+    "PreCompact": {
+      "default": "choir_bloom"
+    }
+  }
+}

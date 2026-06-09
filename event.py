@@ -616,6 +616,14 @@ def trigger(preset_name, preset, voice, song_name=None, quant_override=None,
         d = event_effect.get("delay")
         if isinstance(d, dict):
             echo = d
+    # Per-VOICE delay fallback: a voice may carry its own `delay` dict
+    # ({ms, feedback, count}) in preset.json, applied live at playback (no
+    # re-render). An event-mapping echo, if present, takes precedence so a
+    # voice can still feel different per alert.
+    if echo is None:
+        vd = cfg.get("delay")
+        if isinstance(vd, dict):
+            echo = vd
     play(sample, base_lin * pressure_lin, shift_semitones=shift, delay_s=delay,
          rate_jitter=rate_jitter, echo=echo)
 
@@ -674,6 +682,16 @@ def handle(payload):
     log(f"[{preset_name}/{source}] event={event} tool={tool} session={session[:8]} song={song_name or '-'}")
     try:
         (STATE / "heartbeat").write_text(str(time.time()))
+    except Exception:
+        pass
+    # Per-event activity marker — lets the TUI show a growing dot when each
+    # event TYPE fires (mirrors the per-voice last-<voice>.txt). Written on
+    # every handled event, even if it maps to silence, so unmapped events
+    # still light up and can be mapped.
+    try:
+        _ed = STATE / preset_name
+        _ed.mkdir(parents=True, exist_ok=True)
+        (_ed / f"evt-{event}.txt").write_text(str(time.time()))
     except Exception:
         pass
 

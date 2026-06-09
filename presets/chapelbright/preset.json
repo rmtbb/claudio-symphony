@@ -1,0 +1,127 @@
+{
+  "name": "chapelbright",
+  "description": "Tubular bells ringing chapel-bright at high noon, chiming clear with no shadow. Bell-forward tubular chimes, struck and bright with clean harmonic partials and long shining tails, deliberately NO drone — chapel-bright and bell-led, clear and joyous, all light. A low bell-ground struck soft, a clear mallet-struck lead chiming the melody forward, a higher quick descant above, a sweet rounded middle, a high small-tube ping, scattered top-tube sparkle flicks with delay echoes, a lush blooming chapel wash of overlapping tails, a joyous cascading chime cloud, a damped near-dry tap pulse, and a bright treble accent. A major @ A=432, additive only, hall reverb, never dreary.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [9, 4],
+  "scale_pitches": [57, 59, 61, 62, 64, 66, 68, 69, 71, 73, 74, 76, 78, 80, 81],
+  "voices": {
+    "bell_ground": {
+      "dir": "bell_ground",
+      "mioi": 12,
+      "gain": 0.5,
+      "tonal_anchor_midi": 33,
+      "reverb": {"wet": 0.30, "decay": 3.2, "predelay_ms": 22, "brightness": 0.4}
+    },
+    "chime_lead": {
+      "dir": "chime_lead",
+      "mioi": 2.4,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "reverb": {"wet": 0.34, "decay": 3.4, "predelay_ms": 26, "brightness": 0.58},
+      "delay": {"ms": 320, "feedback": 0.2, "count": 2}
+    },
+    "chime_descant": {
+      "dir": "chime_descant",
+      "mioi": 2.2,
+      "gain": 0.46,
+      "rate_jitter": true,
+      "reverb": {"wet": 0.38, "decay": 3.2, "predelay_ms": 28, "brightness": 0.62}
+    },
+    "chime_sweet": {
+      "dir": "chime_sweet",
+      "mioi": 2.6,
+      "gain": 0.48,
+      "tonal_anchor_midi": 69,
+      "reverb": {"wet": 0.34, "decay": 3.0, "predelay_ms": 24, "brightness": 0.5}
+    },
+    "tube_ping": {
+      "dir": "tube_ping",
+      "mioi": 2.2,
+      "gain": 0.48,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.40, "decay": 3.0, "predelay_ms": 26, "brightness": 0.62},
+      "delay": {"ms": 300, "feedback": 0.22, "count": 2}
+    },
+    "topflick": {
+      "dir": "topflick",
+      "mioi": 0.45,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.32, "decay": 2.4, "predelay_ms": 18, "brightness": 0.62},
+      "delay": {"ms": 260, "feedback": 0.26, "count": 3}
+    },
+    "chapel_bloom": {
+      "dir": "chapel_bloom",
+      "mioi": 16,
+      "gain": 0.44,
+      "tonal_anchor_midi": 69,
+      "reverb": {"wet": 0.52, "decay": 5.5, "predelay_ms": 45, "brightness": 0.5}
+    },
+    "chime_cloud": {
+      "dir": "chime_cloud",
+      "mioi": 22,
+      "gain": 0.52,
+      "reverb": {"wet": 0.50, "decay": 5.0, "predelay_ms": 42, "brightness": 0.52}
+    },
+    "chime_tap": {
+      "dir": "chime_tap",
+      "mioi": 0.16,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 57,
+      "reverb": {"wet": 0.06, "decay": 0.6, "predelay_ms": 8, "brightness": 0.4}
+    },
+    "treble_flick": {
+      "dir": "treble_flick",
+      "mioi": 0.45,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.22, "decay": 1.8, "predelay_ms": 14, "brightness": 0.62}
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "chime_tap",
+      "by_tool": {
+        "Edit": "chime_tap",
+        "Write": "chime_tap",
+        "MultiEdit": "chime_tap",
+        "NotebookEdit": "chime_tap"
+      }
+    },
+    "PostToolUse": {
+      "default": "chime_lead",
+      "by_tool": {
+        "Read": "chime_sweet",
+        "Grep": "chime_sweet",
+        "Glob": "chime_sweet"
+      },
+      "on_failure": "tube_ping"
+    },
+    "Stop": {
+      "default": "tube_ping"
+    },
+    "SessionStart": {
+      "default": "chime_cloud"
+    },
+    "SessionEnd": {
+      "default": "bell_ground"
+    },
+    "SubagentStop": {
+      "default": "chime_descant"
+    },
+    "UserPromptSubmit": {
+      "default": "chime_sweet"
+    },
+    "Notification": {
+      "default": "treble_flick",
+      "on_failure": "topflick"
+    },
+    "PreCompact": {
+      "default": "chapel_bloom"
+    }
+  }
+}

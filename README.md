@@ -1,6 +1,6 @@
 # Claudio Symphony 🎼
 
-> Your Claude Code sessions, scored.
+> **Hear your Claude Code sessions.** Every tool call, file edit, and finished thought becomes a soft, in-key sound — ambient music that breathes with your AI pair-programmer.
 
 ```
                     ╭─────────────────────────────────────╮
@@ -14,58 +14,98 @@
                     ╰─────────────────────────────────────╯
 ```
 
-A small Python program that listens to Claude Code's hook events and turns them into ambient music. Twenty tool calls in three seconds will sound like one gust of wind, not twenty hammer hits — because that's the difference between music and Slack notifications.
+Claudio listens to Claude Code's hook events and turns them into generative, always-in-key ambient music. Twenty tool calls in three seconds sound like one gust of wind, not twenty hammer hits — because that's the difference between music and Slack notifications.
 
-It is not a notification system. It is a room your Claude session is happening inside.
+It is **not** a notification system. It's a room your Claude session is happening inside. After about twenty minutes you stop hearing it as *music* and start hearing it as *the room* — and the room breathes with your work.
 
 ---
 
-## Listen first
+## ✨ Why you'll love it
 
-Four presets ship in the box. **`meadow` is the default** — bright, friendly, no drone. Pick the room you want to be in; switch any time.
+- 🎧 **It's calm, not noisy.** No beeps, no buzzes, no notification DNA. Soothing tones, soft mallets, distant bells — everything tuned to the same key (A = 432 Hz) so it never clashes, no matter how fast Claude is moving.
+- 👂 **You can *hear* what your agent is doing.** A pluck for a tool call, a chime when a sub-agent returns, a slow bloom when a turn finishes. Without looking, you know whether Claude is grinding, waiting, or done.
+- 🪟 **Hear every session at once.** Running Claude in five terminals? Give each project its own room. Now the chord of your whole workspace is audible — you can tell the quiet one finished and the busy one hit an error, eyes closed.
+- 🎹 **36 presets, each a complete world.** Sunlit music box, lush cathedral, near-silent rainfall, plucked koto, vibraphone lounge, handbell carillon, Rhodes warmth… switch live, mid-session, with one command.
+- 🖥️ **A genuinely beautiful web console.** A living constellation of your voices that blooms in real time as Claude plays them. Click an orb to audition; drag a slider to tune.
+- 🎚️ **Tune everything, or nothing.** Sensible defaults out of the box — or open the TUI / web panel and shape every voice, reverb tail, and event mapping to taste.
+- 🪶 **Featherweight & private.** ~1,500 lines of Python, one dependency (numpy), no daemon, no telemetry, no network. Hooks fire async with a 1-second timeout, so they *never* slow Claude down.
+
+---
+
+## 🎧 Listen first
+
+Pick the room you want to work in. **`meadow` is the default** — bright, friendly, no drone. Switch any time, live, no restart:
+
+```bash
+claudio preset use cathedral
+```
+
+A few of the flagship rooms:
 
 ### 🌳  `meadow` — the happy one *(default)*
-> *Wooden felt-mallets and kalimba in a sunlit room. A major pentatonic — universal happy mode, no possible dissonance.*
+> *Wooden felt-mallets and kalimba in a sunlit room. A-major pentatonic — universal happy mode, no possible dissonance.*
 
-Bright. Satisfying. Defined-but-soft attacks. The mallet "thock" of felt on wood. Kalimba tines for file edits. A small bird-chirp for shell commands. A 9-second major-triad bloom when Claude finishes. Like a music box in a sunny room.
+Bright, satisfying, soft attacks. The "thock" of felt on wood for tool calls, kalimba tines for file edits, a small bird-chirp for shell commands, a 9-second major-triad bloom when Claude finishes. Like a music box in a sunny room.
 
 ### 🏛️  `cathedral` — the lush one
 > *Modal drone bed with a full event palette. Eight voices. Always-on. The Eno / Budd / Frahm lane.*
 
-Low drone never stops. Soft felt-piano notes resolve to themselves as tools complete. Faint air-hisses pass by during bash commands. A tuned bell when a sub-agent finishes. Nothing has a melody. Nothing repeats. The room breathes with the work.
+A low drone never stops. Soft felt-piano notes resolve as tools complete; faint air-hisses pass by during bash commands; a tuned bell rings when a sub-agent finishes. Nothing has a melody, nothing repeats — the room just breathes with the work.
 
 ### 🌧️  `rainfall` — the quiet one
-> *Sparse drops in a quiet room with rare long swells. Silence is the canvas.*
+> *Sparse drops in a still room with rare long swells. Silence is the canvas.*
 
-Most of the time you hear nothing. PostToolUse plays a tiny 250 ms drop — like a single bead of water meeting a still pond. Once every minute or two, a 25-second pad blooms in the distance and recedes. Late-night, focused-work, almost-silent.
+Most of the time you hear nothing. PostToolUse plays a tiny 250 ms drop — a single bead of water on a still pond. Once a minute or two, a 25-second pad blooms in the distance and recedes. Late-night, deep-focus, almost-silent.
 
 ### 🎋  `koto` — the contemplative one
-> *Plucked silk strings and a temple bowl in the A In Sen scale. Spare. Like working through a tea ceremony.*
+> *Plucked silk strings and a temple bowl in the A In-Sen scale. Spare, deliberate, like working through a tea ceremony.*
 
-A different emotional space from the A-major family above — minor-leaning, deliberate, Japanese. Three voices: koto for melody, bowl for sustains, mokugyo (wooden fish) for percussive accents.
+A different emotional space from the bright A-major family — minor-leaning, Japanese, unhurried. Koto for melody, bowl for sustains, mokugyo (wooden fish) for accents.
 
-The first three sit in the same A-rooted tonal family, so switching between them mid-session is musically continuous. Switch live with one command.
+### 🌌  …and 32 more
+Crystal glass bowls (`glassbright`), vibraphone (`lounge`), handbell carillon (`peal`), steel pan (`isleshine`), hammered dulcimer (`shimmerwire`), Rhodes EP (`tinewarm`), vocal-oo choir (`choirloft`), nylon guitar (`courtyard`), ocarina (`clayround`), santoor (`sunraga`), and many more — each a complete, render-tested room.
 
----
-
-## What you'll hear
-
-| When this happens... | cathedral | meadow | rainfall |
-|---|---|---|---|
-| Claude starts a tool | airy shimmer | tiny wood tap | (silent) |
-| Bash command starts | wind hiss | bird chirp | (silent) |
-| File edit completes | bowed glass | kalimba pluck | tiny drop |
-| Tool finishes | felt pluck | felt mallet | tiny drop |
-| Sub-agent returns | tuned bell | bright chime | small bell |
-| Claude finishes a turn | slow pad swell | major-triad bloom | 25-sec swell (rare) |
-| Something errored | low E bell | low chime | small bell |
-| You start a new session | sparkle cluster | music-box flourish | swell |
-
-All in scale. All consonant. All baked in synthetic-IR convolution reverb.
+> **Hear them all in seconds:** `claudio audition` walks every preset on your speakers, or open the web panel and click ▶ on any card.
 
 ---
 
-## Install
+## 👂 Hear all your sessions at once
+
+This is the part you didn't know you wanted. Claudio routes sound **per session**, with three lookup tiers (most specific wins):
+
+1. **Session pin** — `claudio session pin <id> cathedral` → that one terminal, forever
+2. **Directory rule** — `claudio rule add "/Users/me/quiet*" rainfall` → every session under that path
+3. **Global default** — `claudio preset use meadow` → the catch-all
+
+```bash
+claudio sessions
+#  #  sid       pin  preset      ago    src       cwd
+#  1  33159931       meadow      0m     default   ~/Projects/shipping-app
+#  2  ab12cd34  📌    rainfall    3m     pin       ~/Projects/quiet-stuff
+```
+
+Give your noisy refactor a different voice than your delicate prod fix, and the two coding sessions become *audibly* distinct. You stop alt-tabbing to check on them — you just *hear* which one needs you.
+
+---
+
+## 🖥️ The web control panel
+
+```bash
+claudio web      # opens a local, no-deps control panel in your browser
+```
+
+A "warm nocturne observatory" you'll actually want to leave open:
+
+- 🌠 **A living constellation** — each voice is a glowing orb in a slow-drifting galaxy that **blooms in real time** the instant Claude triggers it. Watch your session play itself.
+- 🎚️ **Tune anything live** — per-voice gain, reverb, echo; remap any event; switch presets; set per-session rules — all written to the same files the CLI and hooks read, so every change is instant.
+- 🔭 **Browse 36 presets** in a searchable gallery, audition with one click.
+- 🎵 **Music tab** — global scale override, quantize-to-tempo, and MIDI song mode.
+
+Pure Python standard library on the backend (`127.0.0.1` only), Fraunces + Hanken + Space Mono on the front. No build step, no node_modules.
+
+---
+
+## 📦 Install
 
 ```bash
 git clone https://github.com/rmtbb/claudio-symphony.git
@@ -76,27 +116,28 @@ python3 install.py            # deps + render samples + write starter config
 
 Open a new Claude Code session and listen. That's it.
 
-**Requirements:**
-- macOS (uses `afplay` — Linux/Windows support is one small patch in `event.py`, PRs welcome)
-- Python 3.9+ with **numpy**
-- ~250 MB free for generated samples (one-time render, then static)
+**Requirements**
+- 🍎 macOS (uses `afplay` — Linux/Windows support is one small patch in `event.py`; PRs welcome)
+- 🐍 Python 3.9+ with **numpy**
+- 💾 ~250 MB free for generated samples (one-time render, then static)
+
+Tip: add `alias claudio='~/path/to/claudio-symphony/bin/claudio'` to your shell profile.
 
 ---
 
-## Use it
+## 🎛️ Use it
 
 ```bash
 claudio status                          # what's installed and active
-claudio preset list                     # see all available presets
+claudio preset list                     # see all 36 presets
 claudio preset use cathedral            # switch live (no Claude restart)
-claudio preset use default              # back to the shipped default (meadow)
-claudio preset reset meadow             # restore one preset to as-shipped
-claudio reset --yes                     # full reset to fresh-install state
 claudio off / claudio on                # silence everything / restore
-claudio tune                            # interactive TUI for tweaking everything
+claudio web                             # the browser control panel
+claudio tune                            # interactive terminal tuner (TUI)
+claudio audition                        # hear every preset, then pick one
 claudio test                            # walk every voice in the active preset
-claudio volume 0.4                      # master gain for all triggered events
-claudio start / claudio stop            # drone daemon (cathedral only for now)
+claudio volume 0.4                      # master gain
+claudio coffee                          # ☕ support the project (see below)
 ```
 
 ### `claudio tune` — the interactive tuner
@@ -107,11 +148,7 @@ claudio start / claudio stop            # drone daemon (cathedral only for now)
 ─ Voices — [gain]  press t for mioi ──────────────────────────
  ▶ mallet     gain ▰▰▰▰▰▱▱▱ 0.55  mioi ▰▰▱▱ 0.35s
    kalimba    gain ▰▰▰▰▰▱▱▱ 0.50  mioi ▰▰▱▱ 0.30s
-   chime      gain ▰▰▰▰▱▱▱▱ 0.45  mioi ▰▰▰▱ 3.00s
-   bird       gain ▰▰▰▱▱▱▱▱ 0.40  mioi ▰▰▱▱ 0.50s
-   wood       gain ▰▰▰▱▱▱▱▱ 0.30  mioi ▰▱▱▱ 0.08s
    bloom      gain ▰▰▰▰▰▱▱▱ 0.55  mioi ▰▰▰▰ 10.00s
-   cluster    gain ▰▰▰▰▰▱▱▱ 0.55  mioi ▰▰▰▰ 30.00s
 ─ Events ─────────────────────────────────────────────────────
    PreToolUse              → wood
        · Bash              → bird
@@ -119,51 +156,25 @@ claudio start / claudio stop            # drone daemon (cathedral only for now)
        · Edit              → kalimba
        · on_failure        → chime
    Stop                    → bloom
-   ...
-─ Sessions (last 4h) ─────────────────────────────────────────
-   33159931        meadow      2m  (default)  /Users/.../BBWiki
-   ab12cd34        cathedral   5m  (rule)     /Users/.../shipping-app
 ─ TAB pane │ ↑↓ row │ ←→ value │ SPC play │ s save │ q ──────
 ```
 
-Move sliders with arrow keys, SPACE to preview, `m` to mute, `s` to save, `q` to save+quit. Changes are live — the next event picks them up without restarting Claude.
-
-### Per-session routing — different presets per terminal
-
-Three lookup tiers, in order:
-
-1. **Session pin** (`claudio session pin <id> <preset>`) — that one terminal, no matter what
-2. **CWD rule** (`claudio rule add /Users/me/quiet rainfall`) — every future session in that dir
-3. **Global default** (`claudio preset use meadow`) — the catch-all
-
-```bash
-claudio sessions
-#  #  sid       pin  preset      ago    src       cwd
-#  1  33159931       meadow      0m     default   /Users/me/Projects/shipping-app
-#  2  ab12cd34  📌    rainfall    3m     pin       /Users/me/Projects/quiet-stuff
-
-claudio rule add "/Users/me/Projects/quiet*" rainfall
-claudio session pin 1 cathedral
-claudio here meadow      # add a rule for the current cwd
-```
+Arrow keys move sliders, SPACE previews, `s` saves, `q` saves + quits. Changes are live — the next event picks them up without restarting Claude.
 
 ### Power-user CLI
 
 ```bash
-claudio voice mallet gain 0.45            # change a voice's gain in active preset
+claudio voice mallet gain 0.45            # per-voice gain in the active preset
 claudio voice mallet mioi 0.5             # rate-limit (min seconds between hits)
-claudio voice mallet play                 # preview at current settings
 claudio map PostToolUse:Edit pluck        # remap by tool
 claudio map PostToolUse:on_failure -      # silence the failure variant
-claudio mute UserPromptSubmit             # silence an event
-claudio unmute UserPromptSubmit wood      # restore (defaults to first voice)
+claudio scale use A_lydian                # global scale override
+claudio song use mario                    # drive a voice from a MIDI melody
 ```
-
-All changes write back to `presets/<active>/preset.json` and take effect on the next event.
 
 ---
 
-## Make your own preset
+## 🎨 Make your own preset
 
 Each preset is three things:
 
@@ -174,76 +185,89 @@ presets/<your-preset>/
 └── samples/       # output (gitignored — generated by render.py)
 ```
 
-`preset.json` is straightforward — voice names, MIOIs, event mappings. `render.py` imports the shared DSP helpers from the top-level `synth.py` (FFT-convolved reverb, ADSR envelopes, FFT lowpass, sample writers, A=432 frequency math) and writes WAV files into `samples/<voice>/`.
+`render.py` imports the shared DSP helpers from the top-level `synth.py` (FFT-convolved reverb, ADSR envelopes, FFT lowpass, A = 432 frequency math) and writes WAVs into `samples/<voice>/`.
 
-There's a [composer's brief](docs/SONIC_FRAMEWORK.md) covering scale choices, palette design, the anti-machine-gun strategies (per-voice MIOI, pressure accumulators, voice stealing, granular accumulation, reverb-as-glue), and a starter mapping table you can crib from.
-
-If you build something cool, open a PR.
+There's a full [composer's brief](docs/SONIC_FRAMEWORK.md) covering scale choices, palette design, and the anti-machine-gun strategies (per-voice MIOI, pressure accumulators, voice stealing, reverb-as-glue). **If you build a room you love, open a PR — we'd genuinely love to hear it.**
 
 ---
 
-## How it actually works
+## ⚙️ How it actually works
 
 ```
 Claude Code event
-       │
        │  hook fires (async, timeout 1s — never blocks the agent)
        ▼
-~/.claude/settings.json
-       │
-       │  invokes:
-       ▼
-event.py  (~50ms total)
-       │
-       │  ┌─ reads JSON from stdin
-       │  ├─ resolves preset:  pin → cwd-rule → default
+event.py  (~50 ms total)
+       │  ├─ reads the event JSON from stdin
+       │  ├─ resolves the preset:  session pin → cwd rule → global default
        │  ├─ maps event → voice via preset.json
-       │  ├─ checks per-voice MIOI lockfile (drops the event if too soon,
-       │  │   accumulates "pressure" that bumps the next note's amplitude)
-       │  ├─ picks a sample (round-robin across pitches in scale)
+       │  ├─ rate-limits per voice (drops too-soon hits, banks "pressure"
+       │  │   that bumps the next note's amplitude)
+       │  ├─ picks a pitch melodically (Markov-weighted, stays in scale)
        │  └─ launches `afplay` detached
        ▼
    (your speakers)
 ```
 
-`event.py` is stateless except for tiny per-voice last-fired timestamp files. `drone.py` is the only long-running process and it auto-exits after 10 minutes of no event activity. There's no daemon to manage, no port to conflict with anything, no central config server.
-
-The whole thing fits in ~1500 lines of Python with one external dep (numpy).
+`event.py` is stateless except for tiny per-voice timestamp files. `drone.py` is the only long-running process, and it auto-exits after 10 minutes of silence. No daemon to babysit, no port to conflict, no config server. ~1,500 lines of Python, one dependency.
 
 ---
 
-## The composer's notes
+## 🎼 The composer's notes
 
-Three principles that shaped every design choice:
+Three principles shaped every design choice:
 
-**1. Inverse-frequency-to-prominence.** Rare events get the foreground; common events whisper. The session-end pad swell is loud-feeling because it happens once every few minutes. Tool starts get the airiest, most disposable voice because they happen 5–30 times per minute. Get this wrong and the system is either too noisy or too quiet to feel responsive.
-
-**2. No tempo, no melody, no notification DNA.** The ear stops trying to predict downbeats and settles into landscape mode. No memorable hook means no annoyance after hour 3. No bright sine-with-fast-decay anywhere — the moment it sounds like a notification, the developer's nervous system flags every event as a possible interruption.
-
-**3. The reverb tail is the glue.** A 6-second tail on every voice means dense events smear into a wash rather than stack as discrete hits. Same patch handles the gentle session and the chaotic session — the wash gets thicker, not louder.
+1. **Inverse frequency → prominence.** Rare events get the foreground; common events whisper. The end-of-turn swell feels loud because it happens once every few minutes; tool-starts get the airiest, most disposable voice because they fire 5–30× a minute.
+2. **No tempo, no melody, no notification DNA.** With nothing to predict and no memorable hook, the ear settles into landscape mode instead of flinch-mode. The instant something sounds like a notification, your nervous system flags every event as a possible interruption.
+3. **The reverb tail is the glue.** A long tail on every voice means dense bursts smear into a wash rather than stack as discrete hits. The same patch handles the calm session and the chaotic one — the wash gets *thicker*, not *louder*.
 
 Read [the full composer's brief](docs/SONIC_FRAMEWORK.md) — it's worth your time even if you never touch the code.
 
 ---
 
-## Why?
+## 💛 Why I built this
 
-Slack pings condition you to flinch. A cathedral does not. A bell that's tuned to the room you're working in becomes a fact about the room, not an interruption. The hope is that after twenty minutes you stop parsing the sound as music and start parsing it as *room* — and the room breathes with your work.
+I wanted my Claude Code sessions to make soothing, pleasant sounds — all in key, all cohesive — so that AI-assisted coding simply felt nicer to sit inside.
+
+Then something happened while I was building it: I started to *rely* on it. I could suddenly hear what was happening across all of my active coding sessions — which one was busy, which had gone quiet, which just finished. What began as a small idea turned into something I genuinely can't use Claude Code without.
+
+Slack pings condition you to flinch. A cathedral does not. A bell tuned to the room you're working in becomes a *fact about the room*, not an interruption. The hope is that the room starts to breathe with your work — and that you fall for it the way I did. 🌙
 
 ---
 
-## Credits
+<a name="support"></a>
 
-- The two design briefs in [`docs/`](docs/) — `SONIC_FRAMEWORK.md` and `TRIGGER_SURFACE.md` — were drafted by Claude in a single session as the spec for this project. They're worth reading on their own.
-- DSP synthesis: pure numpy, no scipy, no external audio libraries. Synthetic-IR FFT convolution for the reverb.
+## ☕ Support — buy me a coffee
+
+Claudio is free and MIT-licensed, built and maintained in my spare time. If it makes your sessions a little nicer, an on-chain tip means the world and keeps new presets coming. No platform, no cut, no signup — just send to whichever chain you already use:
+
+| Chain | Address | Also accepts | Scan |
+|---|---|---|---|
+| **Bitcoin** (BTC) | `3Ht6H531DyWjgsxV289cWLYKJG8tVza2P5` | — | <img src="web/qr/btc.svg" width="84" alt="BTC QR"> |
+| **Ethereum** (ETH) | `0xB239b34e42b4Bc571158e48a779099950C81C7d8` | USDC (ERC-20) · any EVM token | <img src="web/qr/eth.svg" width="84" alt="ETH QR"> |
+| **Solana** (SOL) | `2PiDya4hpbpki7iUceyE1uYBDR3dQgW6uCN27JVJUHwS` | USDC (SPL) | <img src="web/qr/sol.svg" width="84" alt="SOL QR"> |
+| **Dogecoin** (DOGE) | `D5HMGHjcRnvdcNY5LGAb1EcMpBm8FD8YHN` | — | <img src="web/qr/doge.svg" width="84" alt="DOGE QR"> |
+
+The Ethereum and Solana addresses receive their **native coin first** (ETH / SOL) and **also** take USDC on that chain — same address, no extra step. Send tokens only on the network listed above so they land somewhere I can reach them. You can also pull these up any time with `claudio coffee`, or via the **☕ Tip** button in `claudio web` (with QR + one-tap copy).
+
+> **Verifying these addresses:** all four live in [`donate.json`](donate.json) as the single source of truth, and the app reads the same file. If an address here ever disagrees with `donate.json` or your wallet, treat it as a tampered diff and don't send. (These are public *receiving* addresses — never a private key.)
+
+⭐ Can't tip? **Starring the repo and sharing it** helps just as much.
+
+---
+
+## 🙏 Credits
+
+- The two design briefs in [`docs/`](docs/) — `SONIC_FRAMEWORK.md` and `TRIGGER_SURFACE.md` — were drafted as the spec for this project, and are worth reading on their own.
+- DSP synthesis: pure numpy. Synthetic-IR FFT convolution for the reverb. No scipy, no external audio libraries.
 - Inspired by Brian Eno (*Music for Airports*), Harold Budd (*The Pearl*), Stars of the Lid, Nils Frahm (*Felt*), William Basinski, Susumu Yokota.
 - Tuning: A = 432 Hz throughout. Drone fundamentals are strictly just-intoned (3:2 root-to-fifth); upper voices are equal-tempered.
 
 ---
 
-## License
+## 📄 License
 
-MIT. Do whatever you want with it. If you build a preset you love, we'd love to see it.
+MIT. Do whatever you want with it. If you build a preset you love, we'd love to see it. 💫
 
 ---
 

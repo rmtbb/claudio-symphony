@@ -1,0 +1,4 @@
+# Shows the "Sponsor" button on the repo. GitHub has no native crypto field,
+# so the button points at the README Support section, which holds the on-chain
+# addresses (canonical copy lives in donate.json).
+custom: ["https://github.com/rmtbb/claudio-symphony#support"]

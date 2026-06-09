@@ -32,11 +32,15 @@ Per-session routing
   rule rm <pattern>                Remove a rule
 
 Live tuning
-  tune                             Open the curses TUI (recommended)
+  web                              Open the browser control panel (stunning, live)
+  tune                             Open the curses TUI
   volume <0..1>                    Master gain
   drone-volume <0..1>              Drone gain
   voice <name> gain <0..1>         Per-voice gain (active preset)
   voice <name> mioi <seconds>      Per-voice rate-limit
+  voice <name> reverb <wet> [decay] [bright] | off   Per-voice reverb (regens that voice)
+  voice <name> delay <ms> [fb] [count] | off         Per-voice delay/echo (live, no regen)
+  voice <name> fx                  Show this voice's reverb + delay
   voice <name> play                Preview that voice once
   map <event>[:<tool>] <voice|-|none>   Change event mapping
   mute <event>[:<tool>]            Set mapping to silent
@@ -74,6 +78,9 @@ MIDI songs + quantization
   quant on / off / status          Toggle master quantization
   tempo <bpm>                      Set master quantization tempo
   grid <subdivision>               Beats per cell (0.25=16th, 0.5=8th, 1=quarter)
+
+Support
+  coffee                           Show on-chain tip addresses (alias: tip, donate)
 """
 import os, sys, json, time, fnmatch, subprocess, signal
 from pathlib import Path
@@ -633,15 +640,65 @@ def _require_voice(preset, name):
         return None
     return voices[name]
 
+def _regen_voice(pname, vname):
+    """Re-render a single voice's samples (used after a reverb change)."""
+    render = PRESETS / pname / "render.py"
+    if not render.exists():
+        print(f"  (preset '{pname}' has no render.py; reverb change saved but "
+              f"samples not regenerated)"); return
+    subprocess.run(["/usr/bin/env", "python3", str(render), vname], check=False)
+
+
 def cmd_voice(args):
     if len(args) < 2:
-        print("usage: claudio voice <name> <gain|mioi|play> [value]"); return
+        print("usage: claudio voice <name> <gain|mioi|reverb|delay|fx|play> [value]"); return
     name = args[0]; sub = args[1]; rest = args[2:]
     pname = active_preset_name()
     preset = load_preset(pname)
     if preset is None: print(f"preset {pname} not found"); return
     v = _require_voice(preset, name)
     if v is None: return
+    if sub == "reverb":
+        # claudio voice <name> reverb <wet> [decay] [brightness] | off
+        # baked at render → regenerates just this voice's samples.
+        rv = v.setdefault("reverb", {})
+        if rest and rest[0] in ("off", "dry", "none", "0"):
+            rv["wet"] = 0.0
+        elif not rest:
+            print("usage: claudio voice <name> reverb <wet 0..1> [decay s] [brightness 0..1] | off"); return
+        else:
+            rv["wet"] = round(max(0.0, min(1.0, float(rest[0]))), 3)
+            if len(rest) > 1: rv["decay"] = round(max(0.1, min(8.0, float(rest[1]))), 2)
+            if len(rest) > 2: rv["brightness"] = round(max(0.0, min(1.0, float(rest[2]))), 2)
+        save_preset(pname, preset)
+        print(f"{name}.reverb = {rv}  (regenerating…)")
+        _regen_voice(pname, name)
+        return
+    if sub == "delay":
+        # claudio voice <name> delay <ms> [feedback] [count] | off
+        # live playback echo — no re-render needed.
+        if rest and rest[0] in ("off", "none", "0"):
+            v.pop("delay", None)
+            save_preset(pname, preset)
+            print(f"{name}.delay = off"); return
+        if not rest:
+            print("usage: claudio voice <name> delay <ms> [feedback 0..0.85] [count 1..8] | off"); return
+        d = v.setdefault("delay", {})
+        d["ms"] = int(max(40, min(2000, float(rest[0]))))
+        if len(rest) > 1: d["feedback"] = round(max(0.0, min(0.85, float(rest[1]))), 2)
+        if len(rest) > 2: d["count"] = int(max(1, min(8, float(rest[2]))))
+        d.setdefault("feedback", 0.30); d.setdefault("count", 3)
+        save_preset(pname, preset)
+        print(f"{name}.delay = {d}  (live — no regen)")
+        return
+    if sub in ("fx", "show"):
+        rv = v.get("reverb"); d = v.get("delay")
+        rtxt = (f"wet={rv.get('wet')} decay={rv.get('decay','?')}s "
+                f"bright={rv.get('brightness','?')}" if isinstance(rv, dict) else "(default)")
+        dtxt = (f"{d.get('ms')}ms fb={d.get('feedback')} x{d.get('count')}"
+                if isinstance(d, dict) else "off")
+        print(f"{name}: reverb {rtxt}  |  delay {dtxt}")
+        return
     if sub == "gain":
         if not rest: print("usage: claudio voice <name> gain <0..1>"); return
         v["gain"] = round(max(0.0, min(1.0, float(rest[0]))), 3)
@@ -1299,6 +1356,41 @@ def cmd_tune():
     # exec so curses gets a clean tty handoff
     os.execvp("/usr/bin/env", ["/usr/bin/env", "python3", TUNE_PATH])
 
+# ---------- web UI ----------
+
+def cmd_web(args):
+    """Launch the browser control panel (pure-stdlib local server)."""
+    web = str(HERE / "webui.py")
+    port = "8788"; do_open = True
+    rest = []
+    for i, a in enumerate(args):
+        if a == "--port" and i + 1 < len(args): port = args[i + 1]
+        elif a == "--no-open": do_open = False
+    cmd = ["/usr/bin/env", "python3", web, "--port", port]
+    if do_open: cmd.append("--open")
+    os.execvp("/usr/bin/env", cmd)
+
+# ---------- support ----------
+
+def cmd_coffee(args):
+    d = load_json(HERE / "donate.json", None)
+    if not d or not d.get("methods"):
+        print("No donate.json found.")
+        return
+    print()
+    print(f"  ☕  {d.get('title', 'Buy me a coffee')}")
+    if d.get("blurb"):
+        print(f"      {d['blurb']}")
+    print()
+    for m in d["methods"]:
+        accepts = m.get("accepts", [])
+        extra = f"   ({', '.join(accepts[1:])})" if len(accepts) > 1 else ""
+        print(f"  {m['label']:<10} {m['symbol']:<5} {m['address']}{extra}")
+    print()
+    print("  Native coin first; the listed tokens ride the same address (same chain only).")
+    print("  QR codes + one-tap copy live in the web panel:  claudio web  →  ☕ Tip")
+    print()
+
 # ---------- main ----------
 
 def main(argv):
@@ -1323,6 +1415,7 @@ def main(argv):
     elif cmd == "mute":                 cmd_mute(args)
     elif cmd == "unmute":               cmd_unmute(args)
     elif cmd == "tune":                 cmd_tune()
+    elif cmd in ("web", "ui"):          cmd_web(args)
     elif cmd == "off":                  cmd_off()
     elif cmd == "on":                   cmd_on()
     elif cmd == "toggle":               cmd_toggle()
@@ -1336,6 +1429,7 @@ def main(argv):
     elif cmd == "quant":                cmd_quant(args)
     elif cmd == "tempo":                cmd_tempo(args)
     elif cmd == "grid":                 cmd_grid(args)
+    elif cmd in ("coffee", "tip", "donate"): cmd_coffee(args)
     else:
         print(__doc__)
 

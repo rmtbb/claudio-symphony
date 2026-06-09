@@ -1,0 +1,39 @@
+{
+  "_comment": "Public RECEIVING addresses for tips. Safe to publish — this is the single source of truth read by the README, web UI (/api/donate), and `claudio coffee`. NEVER put a private key or seed phrase in this file.",
+  "title": "Buy me a coffee (on-chain)",
+  "blurb": "Claudio is free and MIT-licensed. If it makes your sessions nicer, a tip keeps new presets coming.",
+  "methods": [
+    {
+      "id": "btc",
+      "label": "Bitcoin",
+      "symbol": "BTC",
+      "address": "3Ht6H531DyWjgsxV289cWLYKJG8tVza2P5",
+      "uri": "bitcoin:3Ht6H531DyWjgsxV289cWLYKJG8tVza2P5",
+      "accepts": ["BTC"]
+    },
+    {
+      "id": "eth",
+      "label": "Ethereum",
+      "symbol": "ETH",
+      "address": "0xB239b34e42b4Bc571158e48a779099950C81C7d8",
+      "uri": "ethereum:0xB239b34e42b4Bc571158e48a779099950C81C7d8",
+      "accepts": ["ETH", "USDC (ERC-20, on Ethereum)", "any ERC-20 / EVM token"]
+    },
+    {
+      "id": "sol",
+      "label": "Solana",
+      "symbol": "SOL",
+      "address": "2PiDya4hpbpki7iUceyE1uYBDR3dQgW6uCN27JVJUHwS",
+      "uri": "solana:2PiDya4hpbpki7iUceyE1uYBDR3dQgW6uCN27JVJUHwS",
+      "accepts": ["SOL", "USDC (SPL, on Solana)"]
+    },
+    {
+      "id": "doge",
+      "label": "Dogecoin",
+      "symbol": "DOGE",
+      "address": "D5HMGHjcRnvdcNY5LGAb1EcMpBm8FD8YHN",
+      "uri": "dogecoin:D5HMGHjcRnvdcNY5LGAb1EcMpBm8FD8YHN",
+      "accepts": ["DOGE"]
+    }
+  ]
+}

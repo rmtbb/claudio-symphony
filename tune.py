@@ -3,7 +3,9 @@
 Claudio Symphony — interactive tuner (curses TUI).
 
 Four panes (TAB to cycle):
-  Voices    — gain + MIOI per voice; SPACE plays a sample from that voice.
+  Voices    — gain/mioi/reverb/delay per voice (g/t/v/e pick column, ←→ adjust);
+              reverb is baked so it flags a regen (r); delay is a live echo.
+              SPACE plays a sample from that voice.
   Events    — event → voice mapping (incl. by-tool overrides + on_failure).
               SPACE plays the mapped voice; m mutes/unmutes; d cycles delay.
   Settings  — master/drone gain, reverb scale (per-preset), scale override,
@@ -96,7 +98,7 @@ class TuneUI:
 
         self.pane = self.PANE_VOICES
         self.row_v = 0
-        self.col_v = 0  # 0=gain 1=mioi
+        self.col_v = 0  # 0=gain 1=mioi 2=reverb 3=delay
         self.row_e = 0
         self.row_g = 0   # settings row
         self.row_s = 0
@@ -119,15 +121,28 @@ class TuneUI:
     def voice_names(self):
         return list(self.preset.get("voices", {}).keys())
 
+    # Every Claude Code hook event Claudio can sonify — always shown so any
+    # event can be mapped even if the preset doesn't define it yet.
+    ALL_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
+                  "SubagentStop", "Stop", "SessionEnd", "Notification", "PreCompact"]
+
     def events_flat(self):
         rows = []
-        for ev, spec in self.preset.get("events", {}).items():
+        evmap = self.preset.get("events", {})
+
+        def _emit(ev, spec):
             spec = spec or {}
             rows.append((ev, "default", spec.get("default")))
             for t, v in (spec.get("by_tool") or {}).items():
                 rows.append((ev, t, v))
             if "on_failure" in spec:
                 rows.append((ev, "on_failure", spec.get("on_failure")))
+
+        for ev in self.ALL_EVENTS:
+            _emit(ev, evmap.get(ev))
+        for ev, spec in evmap.items():          # any non-canonical extras
+            if ev not in self.ALL_EVENTS:
+                _emit(ev, spec)
         return rows
 
     def sessions(self):
@@ -261,8 +276,9 @@ class TuneUI:
         # Voices pane
         y = 3
         attr = curses.A_BOLD | (curses.A_REVERSE if self.pane == self.PANE_VOICES else 0)
-        col_hint = "[gain]  press t for mioi" if self.col_v == 0 else "gain   [mioi]  press g for gain"
-        header = f" Voices — {col_hint} "
+        _cols = ["gain", "mioi", "reverb", "delay"]
+        col_hint = "  ".join(f"[{c}]" if self.col_v == j else c for j, c in enumerate(_cols))
+        header = f" Voices — {col_hint}  (g/t/v/e col · ←→ adjust · r regen) "
         self._addstr(y, 1, header.ljust(w - 2, "─"), attr); y += 1
         now = time.time()
         for i, (name, cfg) in enumerate(self.voices()):
@@ -270,8 +286,6 @@ class TuneUI:
             arrow = "▶" if sel else " "
             gain = cfg.get("gain", 0.5)
             mioi = cfg.get("mioi", 0.5)
-            gain_attr = curses.A_BOLD if (sel and self.col_v == 0) else 0
-            mioi_attr = curses.A_BOLD if (sel and self.col_v == 1) else 0
             row_attr = curses.A_REVERSE if sel else 0
             # Last-fired indicator: ◉ < 0.5s, ● < 1.5s, ◎ < 3s, · older. Reads
             # the per-voice last-<voice>.txt the event hook touches on every fire.
@@ -285,14 +299,24 @@ class TuneUI:
             elif age < 1.5: dot = "●"
             elif age < 3.0: dot = "◎"
             else:           dot = "·"
-            line = f" {arrow} {name:<10} {dot}  gain {self._slider(gain)} {gain:>4.2f}    mioi {self._mioi_bar(mioi)} {mioi:>6.2f}s"
-            self._addstr(y, 1, line.ljust(w-2), row_attr | (gain_attr if self.col_v == 0 else mioi_attr))
+            rv = cfg.get("reverb")
+            wet = rv.get("wet") if isinstance(rv, dict) else None
+            rev_str = f"{wet:.2f}" if isinstance(wet, (int, float)) else " · "
+            dd = cfg.get("delay")
+            dly_str = f"{int(dd['ms'])}ms" if isinstance(dd, dict) and dd.get("ms") else "off"
+            def _br(j, txt):  # bracket the focused column
+
+                return f"[{txt}]" if (sel and self.col_v == j) else f" {txt} "
+            seg = (f"gain{_br(0, f'{gain:.2f}')} mioi{_br(1, f'{mioi:.2f}s')} "
+                   f"rev{_br(2, rev_str)} dly{_br(3, dly_str)}")
+            line = f" {arrow} {name:<11} {dot}  {seg}"
+            self._addstr(y, 1, line.ljust(w-2), row_attr)
             y += 1
         y += 1
 
-        # Events pane (now also shows per-event delay/echo column when set)
+        # Events pane — shows a firing dot per event, the mapped voice, and delay.
         attr = curses.A_BOLD | (curses.A_REVERSE if self.pane == self.PANE_EVENTS else 0)
-        self._addstr(y, 1, " Events  (d cycles delay) ".ljust(w - 2, "─"), attr); y += 1
+        self._addstr(y, 1, " Events  (◉ = just fired · d cycles delay) ".ljust(w - 2, "─"), attr); y += 1
         ev_rows = self.events_flat()
         # render with simple scroll if too many rows. The settings pane below
         # eats some space too; leave a budget per pane.
@@ -303,16 +327,26 @@ class TuneUI:
             ev, key, val = ev_rows[i]
             sel = (self.pane == self.PANE_EVENTS and self.row_e == i)
             arrow = "▶" if sel else " "
-            indent = "  " if key == "default" else "      · "
-            label = ev if key == "default" else key
             v = "(silent)" if val is None else val
-            # Append delay info if present (delays are per-event, not per-key,
-            # so only show on the default row)
             delay_str = ""
             if key == "default":
+                # Activity dot: read the per-event evt-<ev>.txt the hook touches
+                # on every fire (mirrors the Voices pane's per-voice dot).
+                try:
+                    ep = STATE / self.preset_name / f"evt-{ev}.txt"
+                    ets = float(ep.read_text().strip()) if ep.exists() else 0.0
+                except Exception:
+                    ets = 0.0
+                eage = now - ets if ets else 1e9
+                edot = "◉" if eage < 0.5 else "●" if eage < 1.5 else "◎" if eage < 3.0 else "·"
+                indent = f"{edot} "
+                label = ev
                 d = self._event_delay(ev)
                 if d:
                     delay_str = f"  · echo {d.get('ms','?')}ms ×{d.get('count','?')}"
+            else:
+                indent = "      · "
+                label = key
             line = f" {arrow}{indent}{label:<22}→ {v}{delay_str}"
             row_attr = curses.A_REVERSE if sel else 0
             self._addstr(y, 1, line.ljust(w-2), row_attr)
@@ -359,7 +393,7 @@ class TuneUI:
             self._addstr(h - 2, 1, self.message.ljust(w - 2), curses.A_DIM)
 
         # Footer — split across two lines so all keys fit at narrower widths
-        keys = " TAB pane │ ↑↓ row │ ←→ value │ g/t col │ SPC play │ d delay │ m mute │ p preset │ s save │ r regen │ q save+quit │ Q discard "
+        keys = " TAB pane │ ↑↓ row │ ←→ value │ g/t/v/e col │ SPC play │ m mute │ p preset │ s save │ r regen │ q save+quit │ Q discard "
         self._addstr(h - 1, 0, keys.center(w, "─"), curses.A_BOLD)
 
         self.stdscr.refresh()
@@ -377,11 +411,37 @@ class TuneUI:
         v = self.preset["voices"][names[voice_idx]]
         if col == 0:
             v["gain"] = round(max(0.0, min(1.0, v.get("gain", 0.5) + delta * 0.05)), 3)
-        else:
+        elif col == 1:
             cur = v.get("mioi", 0.5)
             factor = 1.2 if delta > 0 else (1.0 / 1.2)
             v["mioi"] = round(max(0.01, min(120.0, cur * factor)), 3)
+        elif col == 2:
+            # reverb wet is baked at render → flag a regen (press r / save).
+            rv = v.setdefault("reverb", {})
+            rv["wet"] = round(max(0.0, min(1.0, float(rv.get("wet", 0.0)) + delta * 0.05)), 3)
+            self.regen_needed = True
+            self.status(f"{names[voice_idx]} reverb {rv['wet']:.2f} — press r to regen", dur=4.0)
+        elif col == 3:
+            # delay/echo is a live playback effect → no regen needed.
+            self._cycle_voice_delay(names[voice_idx], delta)
         self.preset_dirty = True
+
+    def _cycle_voice_delay(self, name, delta):
+        """Cycle a voice's live delay/echo through DELAY_PRESETS (no regen)."""
+        v = self.preset["voices"].get(name)
+        if v is None: return
+        cur = v.get("delay")
+        idx = 0
+        for i, (pv, _) in enumerate(self.DELAY_PRESETS):
+            if pv is None and cur is None: idx = i; break
+            if cur and isinstance(pv, dict) and cur.get("ms") == pv.get("ms") \
+               and cur.get("count") == pv.get("count"): idx = i; break
+        nv, label = self.DELAY_PRESETS[(idx + delta) % len(self.DELAY_PRESETS)]
+        if nv is None:
+            v.pop("delay", None)
+        else:
+            v["delay"] = dict(nv)
+        self.status(f"{name} delay → {label}")
 
     def cycle_event_voice(self, row, delta):
         rows = self.events_flat()
@@ -688,6 +748,10 @@ class TuneUI:
             self.col_v = 0; return True
         if key == ord('t') and self.pane == self.PANE_VOICES:
             self.col_v = 1; return True
+        if key == ord('v') and self.pane == self.PANE_VOICES:
+            self.col_v = 2; return True
+        if key == ord('e') and self.pane == self.PANE_VOICES:
+            self.col_v = 3; return True
         if key in (ord(','), ord('-'), ord('_')):
             self.adjust_master(-0.05); return True
         if key in (ord('.'), ord('+'), ord('=')):

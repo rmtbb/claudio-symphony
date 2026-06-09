@@ -1,0 +1,286 @@
+{
+  "name": "whittle",
+  "description": "A sunlit wooden desk that learned to sing. Warm felt taps and knuckle knocks under a clear little woodblock \u2014 the tactile working sounds you already love \u2014 now answered by a singing kalimba-mallet, sweet celeste chimes, a breathing sub-bass floor, a soft maternal bloom, a glowing pentatonic welcome, and a happy little bird. A major pentatonic, additive and clean, Boards-of-Canada warm. Every register is covered: the wood keeps the room in-the-room and dry, the melodic voices float bright over it, and the bass grounds it all without ever turning dark, busy, or harsh.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [
+    9,
+    4
+  ],
+  "scale_pitches": [
+    57,
+    59,
+    61,
+    64,
+    66,
+    69,
+    71,
+    73,
+    76,
+    78,
+    81
+  ],
+  "voices": {
+    "felt_hush": {
+      "dir": "felt_hush",
+      "mioi": 0.12,
+      "gain": 0.55,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 55,
+      "reverb": {
+        "wet": 0,
+        "decay": 0.6,
+        "predelay_ms": 8,
+        "brightness": 0.35
+      }
+    },
+    "felt_knock": {
+      "dir": "felt_knock",
+      "mioi": 0.12,
+      "gain": 0.4,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 45,
+      "reverb": {
+        "wet": 0.05,
+        "decay": 0.6,
+        "predelay_ms": 8,
+        "brightness": 0.3
+      }
+    },
+    "rimstick": {
+      "dir": "rimstick",
+      "mioi": 0.12,
+      "gain": 0.55,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 61,
+      "reverb": {
+        "wet": 0.02,
+        "decay": 0.5,
+        "predelay_ms": 8,
+        "brightness": 0.4
+      }
+    },
+    "hollow_knock": {
+      "dir": "hollow_knock",
+      "mioi": 0.18,
+      "gain": 0.55,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 57,
+      "reverb": {
+        "wet": 0.05,
+        "decay": 0.7,
+        "predelay_ms": 8,
+        "brightness": 0.5
+      }
+    },
+    "temple_block": {
+      "dir": "temple_block",
+      "mioi": 0.18,
+      "gain": 0.46,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.05,
+        "decay": 0.6,
+        "predelay_ms": 8,
+        "brightness": 0.35
+      }
+    },
+    "clave": {
+      "dir": "clave",
+      "mioi": 0.18,
+      "gain": 0.55,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 81,
+      "reverb": {
+        "wet": 0.05,
+        "decay": 0.6,
+        "predelay_ms": 8,
+        "brightness": 0.4
+      }
+    },
+    "cork_pop": {
+      "dir": "cork_pop",
+      "mioi": 0.16,
+      "gain": 0.55,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 57,
+      "reverb": {
+        "wet": 0.05,
+        "decay": 0.6,
+        "predelay_ms": 8,
+        "brightness": 0.45
+      }
+    },
+    "felt_thump": {
+      "dir": "felt_thump",
+      "mioi": 0.18,
+      "gain": 0.55,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 33,
+      "reverb": {
+        "wet": 0.05,
+        "decay": 0.6,
+        "predelay_ms": 8,
+        "brightness": 0.3
+      }
+    },
+    "dewspring": {
+      "dir": "dewspring",
+      "mioi": 2.2,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.18,
+        "decay": 1.6,
+        "predelay_ms": 18,
+        "brightness": 0.6
+      },
+      "delay": {
+        "ms": 320,
+        "feedback": 0.18,
+        "count": 2
+      }
+    },
+    "clearsong": {
+      "dir": "clearsong",
+      "mioi": 2.6,
+      "gain": 0.42,
+      "tonal_anchor_midi": 69,
+      "reverb": {
+        "wet": 0.16,
+        "decay": 2.4,
+        "predelay_ms": 22,
+        "brightness": 0.55
+      }
+    },
+    "jewel_celeste": {
+      "dir": "jewel_celeste",
+      "mioi": 2.6,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.36,
+        "decay": 3.2,
+        "predelay_ms": 28,
+        "brightness": 0.62
+      },
+      "delay": {
+        "ms": 320,
+        "feedback": 0.22,
+        "count": 2
+      }
+    },
+    "sunlift": {
+      "dir": "sunlift",
+      "mioi": 11,
+      "gain": 0.5,
+      "reverb": {
+        "wet": 0.46,
+        "decay": 4.6,
+        "predelay_ms": 38,
+        "brightness": 0.62
+      },
+      "delay": {
+        "ms": 320,
+        "feedback": 0.18,
+        "count": 2
+      }
+    },
+    "lovebird": {
+      "dir": "lovebird",
+      "mioi": 0.35,
+      "gain": 0.55,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.1,
+        "decay": 1.6,
+        "predelay_ms": 12,
+        "brightness": 0.6
+      }
+    },
+    "mother_bloom": {
+      "dir": "mother_bloom",
+      "mioi": 16,
+      "gain": 0.42,
+      "tonal_anchor_midi": 69,
+      "reverb": {
+        "wet": 0.5,
+        "decay": 5,
+        "predelay_ms": 45,
+        "brightness": 0.42
+      },
+      "delay": {
+        "ms": 420,
+        "feedback": 0.18,
+        "count": 2
+      }
+    },
+    "communion": {
+      "dir": "communion",
+      "mioi": 22,
+      "gain": 0.55,
+      "reverb": {
+        "wet": 0.5,
+        "decay": 5,
+        "predelay_ms": 45,
+        "brightness": 0.4
+      }
+    },
+    "lowtide": {
+      "dir": "lowtide",
+      "mioi": 12,
+      "gain": 0.5,
+      "tonal_anchor_midi": 33,
+      "reverb": {
+        "wet": 0.09,
+        "decay": 1.6,
+        "predelay_ms": 12,
+        "brightness": 0.3
+      }
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "felt_hush",
+      "by_tool": {
+        "Edit": "rimstick",
+        "Write": "rimstick",
+        "MultiEdit": "rimstick",
+        "NotebookEdit": "rimstick"
+      }
+    },
+    "PostToolUse": {
+      "default": "dewspring",
+      "by_tool": {
+        "Read": "clearsong",
+        "Grep": "clearsong",
+        "Glob": "clearsong"
+      },
+      "on_failure": "jewel_celeste"
+    },
+    "Stop": {
+      "default": "jewel_celeste"
+    },
+    "SessionStart": {
+      "default": "communion"
+    },
+    "SessionEnd": {
+      "default": "lowtide"
+    },
+    "SubagentStop": {
+      "default": "clave"
+    },
+    "UserPromptSubmit": {
+      "default": "clearsong"
+    },
+    "Notification": {
+      "default": "sunlift",
+      "on_failure": "lovebird"
+    },
+    "PreCompact": {
+      "default": "mother_bloom"
+    }
+  }
+}

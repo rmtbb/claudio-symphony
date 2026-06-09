@@ -1,0 +1,127 @@
+{
+  "name": "velveteen",
+  "description": "Warm bell-keys glowing through tape haze — a nostalgic celesta lullaby from a half-remembered summer. Soft celesta bell-keys with gentle tape wow and warm low-pass haze, Boards-of-Canada dreampop: hazy-bright like sunlight through old film, tender and happy. A tape-warm sub-key grounds the floor; a celesta lead sings a nostalgic tune with a higher key echoing it dreamily; a muffled warm key fills the cozy middle; clear glass-key chimes and tiny high glints shimmer through the haze; a lush hazy bloom and a detuned bell-key cluster wash underneath; a faint tape hiss-and-wow grain sits behind everything; and a tender little flick accents the bright. A major pentatonic @ A=432, additive and clean, never dreary, never harsh.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [9, 4],
+  "scale_pitches": [57, 59, 61, 64, 66, 69, 71, 73, 76, 78, 81],
+  "voices": {
+    "subkey": {
+      "dir": "subkey",
+      "mioi": 12,
+      "gain": 0.5,
+      "tonal_anchor_midi": 33,
+      "reverb": {"wet": 0.08, "decay": 1.8, "predelay_ms": 12, "brightness": 0.28}
+    },
+    "bellkey": {
+      "dir": "bellkey",
+      "mioi": 2.2,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "reverb": {"wet": 0.34, "decay": 2.6, "predelay_ms": 26, "brightness": 0.55},
+      "delay": {"ms": 340, "feedback": 0.2, "count": 2}
+    },
+    "bellkey_hi": {
+      "dir": "bellkey_hi",
+      "mioi": 2.4,
+      "gain": 0.46,
+      "rate_jitter": true,
+      "reverb": {"wet": 0.36, "decay": 2.8, "predelay_ms": 28, "brightness": 0.58},
+      "delay": {"ms": 420, "feedback": 0.22, "count": 2}
+    },
+    "warmkey": {
+      "dir": "warmkey",
+      "mioi": 2.6,
+      "gain": 0.44,
+      "tonal_anchor_midi": 64,
+      "reverb": {"wet": 0.2, "decay": 2.2, "predelay_ms": 22, "brightness": 0.42}
+    },
+    "glasskey": {
+      "dir": "glasskey",
+      "mioi": 2.6,
+      "gain": 0.48,
+      "reverb": {"wet": 0.38, "decay": 3.2, "predelay_ms": 30, "brightness": 0.6}
+    },
+    "glints": {
+      "dir": "glints",
+      "mioi": 1.2,
+      "gain": 0.46,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.32, "decay": 2.4, "predelay_ms": 22, "brightness": 0.6},
+      "delay": {"ms": 300, "feedback": 0.24, "count": 3}
+    },
+    "hazebloom": {
+      "dir": "hazebloom",
+      "mioi": 16,
+      "gain": 0.42,
+      "tonal_anchor_midi": 57,
+      "reverb": {"wet": 0.52, "decay": 5.0, "predelay_ms": 45, "brightness": 0.4}
+    },
+    "chimecloud": {
+      "dir": "chimecloud",
+      "mioi": 22,
+      "gain": 0.5,
+      "reverb": {"wet": 0.5, "decay": 4.8, "predelay_ms": 42, "brightness": 0.45}
+    },
+    "tapegrain": {
+      "dir": "tapegrain",
+      "mioi": 1.6,
+      "gain": 0.4,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 57,
+      "reverb": {"wet": 0.06, "decay": 0.8, "predelay_ms": 10, "brightness": 0.32}
+    },
+    "flicker": {
+      "dir": "flicker",
+      "mioi": 0.45,
+      "gain": 0.46,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.18, "decay": 1.8, "predelay_ms": 14, "brightness": 0.58}
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "tapegrain",
+      "by_tool": {
+        "Edit": "glints",
+        "Write": "glints",
+        "MultiEdit": "glints",
+        "NotebookEdit": "glints"
+      }
+    },
+    "PostToolUse": {
+      "default": "bellkey",
+      "by_tool": {
+        "Read": "warmkey",
+        "Grep": "warmkey",
+        "Glob": "warmkey"
+      },
+      "on_failure": "bellkey_hi"
+    },
+    "Stop": {
+      "default": "glasskey"
+    },
+    "SessionStart": {
+      "default": "chimecloud"
+    },
+    "SessionEnd": {
+      "default": "subkey"
+    },
+    "SubagentStop": {
+      "default": "bellkey_hi"
+    },
+    "UserPromptSubmit": {
+      "default": "warmkey"
+    },
+    "Notification": {
+      "default": "flicker",
+      "on_failure": "glints"
+    },
+    "PreCompact": {
+      "default": "hazebloom"
+    }
+  }
+}
