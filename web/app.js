@@ -159,6 +159,74 @@ function openBrowser() {
 }
 function closeBrowser() { $('#browser').hidden = true; }
 
+/* ---------------- manage custom presets ---------------- */
+async function refreshPresetsState() {
+  const s = await api.get('/api/state');
+  STATE.presets = s.presets; STATE.active = s.active; $('#npName').textContent = s.active;
+}
+async function deletePreset(name) {
+  if (!confirm(`Delete the custom preset “${name}”? This removes its sounds for good.`)) return;
+  const r = await api.post('/api/preset/delete', { name });
+  if (!r.ok) { toast(r.msg || 'could not delete'); return; }
+  const wasEditing = editPreset() === name;
+  await refreshPresetsState();
+  if (wasEditing) setFocus({ kind: 'global' });
+  renderBrowser($('#browserSearch').value);
+  toast(`deleted <span class="g">${name}</span>`);
+}
+async function renamePreset(name) {
+  const to = prompt(`Rename “${name}” to:`, name);
+  if (to == null) return;
+  const wasEditing = editPreset() === name;
+  const r = await api.post('/api/preset/rename', { name, to });
+  if (!r.ok) { toast(r.msg || 'could not rename'); return; }
+  await refreshPresetsState();
+  if (wasEditing) setFocus({ kind: 'global' });
+  renderBrowser($('#browserSearch').value);
+  toast(`renamed → <span class="g">${r.name}</span>`);
+}
+
+/* ---------------- swap a voice's sound ---------------- */
+let SWAP = null;
+async function openSwap(voice) {
+  SWAP = { preset: editPreset(), voice };
+  $('#swapTitle').textContent = `Replace the sound of “${voice}”`;
+  $('#swap').hidden = false;
+  if (!BANK) { try { BANK = (await api.get('/api/palette')).palette; } catch (e) { BANK = []; } }
+  $('#swapSearch').value = ''; renderSwapPalette('');
+  setTimeout(() => $('#swapSearch').focus(), 50);
+}
+function closeSwap() { $('#swap').hidden = true; SWAP = null; }
+function renderSwapPalette(filter) {
+  const f = (filter || '').trim().toLowerCase();
+  const wrap = $('#swapPalette'); wrap.innerHTML = '';
+  (BANK || []).forEach(grp => {
+    const voices = grp.voices.filter(v => !f || v.voice.toLowerCase().includes(f) || grp.preset.includes(f));
+    if (!voices.length) return;
+    const sec = document.createElement('div'); sec.className = 'b-grp';
+    sec.innerHTML = `<div class="b-grp-h">${grp.preset}</div>`;
+    const row = document.createElement('div'); row.className = 'b-chips';
+    voices.forEach(v => {
+      const chip = document.createElement('div'); chip.className = 'b-chip';
+      chip.innerHTML = `<button class="b-play" title="hear it">▶</button><span class="b-vn">${v.voice}</span><button class="b-use" title="use this sound">use</button>`;
+      chip.querySelector('.b-play').onclick = () => api.post('/api/voice/play', { preset: grp.preset, voice: v.voice });
+      chip.querySelector('.b-use').onclick = () => doSwap(grp.preset, v.voice);
+      row.appendChild(chip);
+    });
+    sec.appendChild(row); wrap.appendChild(sec);
+  });
+}
+async function doSwap(sp, sv) {
+  if (!SWAP) return;
+  const target = SWAP;
+  const r = await api.post('/api/voice/swap', { preset: target.preset, voice: target.voice, src_preset: sp, src_voice: sv });
+  if (!r.ok) { toast(r.msg || 'swap failed'); return; }
+  closeSwap();
+  await loadFocus();
+  api.post('/api/voice/play', { preset: target.preset, voice: target.voice });
+  toast(`<span class="g">${target.voice}</span> now sounds like ${sp}/${sv}`);
+}
+
 /* ---------------- preset builder ---------------- */
 let BANK = null, bPicks = [], bMode = 'blank';
 const pkKey = (sp, sv) => sp + '/' + sv;
@@ -338,11 +406,16 @@ function renderBrowser(filter) {
   const cur = editPreset();
   STATE.presets.filter(p => !f || p.name.includes(f) || (p.description || '').toLowerCase().includes(f)).forEach(p => {
     const c = document.createElement('div');
-    c.className = 'card' + (p.name === cur ? ' active' : '');
-    c.innerHTML = `<div class="nm">${p.name}</div><div class="desc">${p.description || ''}</div>
-      <div class="meta"><span class="chip">${p.voice_count} voices</span>${p.has_drone ? '<span class="chip">drone</span>' : ''}<button class="play" title="audition">▶</button></div>`;
-    c.onclick = (e) => { if (e.target.closest('.play')) return; assignPreset(p.name); };
+    c.className = 'card' + (p.name === cur ? ' active' : '') + (p.custom ? ' custom' : '');
+    const customBtns = p.custom ? `<button class="cardx rename" title="rename">✎</button><button class="cardx del" title="delete">🗑</button>` : '';
+    c.innerHTML = `<div class="nm">${p.name}${p.custom ? '<span class="cust-tag">custom</span>' : ''}</div><div class="desc">${p.description || ''}</div>
+      <div class="meta"><span class="chip">${p.voice_count} voices</span>${p.has_drone ? '<span class="chip">drone</span>' : ''}${customBtns}<button class="play" title="audition">▶</button></div>`;
+    c.onclick = (e) => { if (e.target.closest('.play,.cardx')) return; assignPreset(p.name); };
     c.querySelector('.play').onclick = (e) => { e.stopPropagation(); api.post('/api/audition', { name: p.name }); toast(`auditioning <span class="g">${p.name}</span>`); };
+    if (p.custom) {
+      c.querySelector('.del').onclick = (e) => { e.stopPropagation(); deletePreset(p.name); };
+      c.querySelector('.rename').onclick = (e) => { e.stopPropagation(); renamePreset(p.name); };
+    }
     grid.appendChild(c);
   });
 }
@@ -382,6 +455,7 @@ function renderVoices() {
         <div class="ctl"><span class="k">echo</span><div class="chips">${DELAYS.map((o,j)=>`<button class="dchip${j===di?' on':''}" data-j="${j}">${o.label}</button>`).join('')}</div></div>
         <div class="ctl"><span class="k">jit</span><div class="toggle mini${v.rate_jitter?' on':''}" title="pitch jitter"><span class="tk"></span></div></div>
       </div>
+      <button class="vswap" title="swap this voice's sound">↺</button>
       <button class="vplay" title="play">▶</button>`;
     const g = row.querySelector('.gain'); setFill(g);
     g.oninput = () => { row.querySelector('.gv').textContent = fmt(g.value,2); setFill(g); };
@@ -397,6 +471,7 @@ function renderVoices() {
     const jt = row.querySelector('.toggle'); jt.onclick = () => { const on = !jt.classList.contains('on'); jt.classList.toggle('on', on); api.post('/api/voice', { preset: P, voice: v.name, field: 'rate_jitter', value: on }); };
     const play = () => { api.post('/api/voice/play', { preset: P, voice: v.name }); flare(v.name); };
     row.querySelector('.vplay').onclick = play; row.querySelector('.vname').onclick = play;
+    row.querySelector('.vswap').onclick = () => openSwap(v.name);
     wrap.appendChild(row);
   });
 }
@@ -590,9 +665,13 @@ function wireGlobal() {
     bMode = s.dataset.mode; $$('.b-seg').forEach(x => x.classList.toggle('on', x === s));
     $('#bDupSel').hidden = bMode !== 'dup'; renderBuilderSel();
   });
+  $('#swapClose').onclick = closeSwap;
+  $('#swap').onclick = (e) => { if (e.target.id === 'swap') closeSwap(); };
+  $('#swapSearch').oninput = e => renderSwapPalette(e.target.value);
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    if (!$('#builder').hidden) closeBuilder();
+    if (!$('#swap').hidden) closeSwap();
+    else if (!$('#builder').hidden) closeBuilder();
     else if (!$('#browser').hidden) closeBrowser();
     else if (!$('#tipModal').hidden) closeTip();
     else if (!$('#recModal').hidden) closeRec();

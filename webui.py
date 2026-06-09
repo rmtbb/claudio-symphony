@@ -125,6 +125,7 @@ def preset_card(name):
         "scale_len": len(p.get("scale_pitches", []) or []),
         "has_drone": bool(p.get("drone")),
         "master_gain": p.get("master_gain", 0.5),
+        "custom": bool(p.get("custom")),
     }
 
 SESSION_TTL = 4 * 3600
@@ -262,6 +263,7 @@ def create_custom_preset(spec):
         else:
             preset = {"description": spec.get("description") or "custom preset",
                       "master_gain": 0.5, "voices": {}, "events": {}}
+        preset["custom"] = True                          # marks it user-built (deletable/renamable)
             # blank: no scale_pitches → the picker uses each voice's full sample set,
             # which is the safe choice for a mixed bag of borrowed sounds.
 
@@ -304,6 +306,100 @@ def create_custom_preset(spec):
     except Exception as e:
         shutil.rmtree(target, ignore_errors=True)
         return {"ok": False, "msg": f"build failed: {e}"}
+
+def _is_custom(name):
+    return bool((load_preset(name) or {}).get("custom"))
+
+def delete_custom_preset(name):
+    if name not in list_preset_names():
+        return {"ok": False, "msg": "not found"}
+    if not _is_custom(name):
+        return {"ok": False, "msg": "only presets you built can be deleted"}
+    # if it's the global default, fall back to meadow
+    cfg = load_config()
+    if cfg.get("preset") == name:
+        cfg["preset"] = "meadow" if (PRESETS / "meadow").exists() else (list_preset_names() or ["meadow"])[0]
+        save_config(cfg)
+    # drop references in sessions pins + cwd rules
+    try:
+        sj = load_json(SESSIONS_FILE, {"active": {}})
+        for sid, rec in (sj.get("active", {}) or {}).items():
+            if rec.get("preset_pinned") == name: rec.pop("preset_pinned", None)
+        save_json(SESSIONS_FILE, sj)
+    except Exception: pass
+    try:
+        rj = load_json(RULES_FILE, {"rules": []})
+        rj["rules"] = [r for r in rj.get("rules", []) if r.get("preset") != name]
+        save_json(RULES_FILE, rj)
+    except Exception: pass
+    shutil.rmtree(PRESETS / name, ignore_errors=True)
+    shutil.rmtree(STATE / name, ignore_errors=True)
+    return {"ok": True, "name": name}
+
+def rename_custom_preset(name, to):
+    if name not in list_preset_names():
+        return {"ok": False, "msg": "not found"}
+    if not _is_custom(name):
+        return {"ok": False, "msg": "only presets you built can be renamed"}
+    to = _slug(to)
+    if len(to) < 2:
+        return {"ok": False, "msg": "new name must be at least 2 letters/digits"}
+    if to == name:
+        return {"ok": True, "name": to}
+    if to in _RESERVED_NAMES or to in list_preset_names() or (PRESETS / to).exists():
+        return {"ok": False, "msg": f"'{to}' already exists"}
+    try:
+        (PRESETS / name).rename(PRESETS / to)
+    except Exception as e:
+        return {"ok": False, "msg": f"rename failed: {e}"}
+    if (STATE / name).exists():
+        try: (STATE / name).rename(STATE / to)
+        except Exception: pass
+    cfg = load_config()
+    if cfg.get("preset") == name: cfg["preset"] = to; save_config(cfg)
+    try:
+        sj = load_json(SESSIONS_FILE, {"active": {}})
+        for rec in (sj.get("active", {}) or {}).values():
+            if rec.get("preset_pinned") == name: rec["preset_pinned"] = to
+        save_json(SESSIONS_FILE, sj)
+    except Exception: pass
+    try:
+        rj = load_json(RULES_FILE, {"rules": []})
+        for r in rj.get("rules", []):
+            if r.get("preset") == name: r["preset"] = to
+        save_json(RULES_FILE, rj)
+    except Exception: pass
+    return {"ok": True, "name": to}
+
+def swap_voice_sound(preset, voice, src_preset, src_voice):
+    """Replace one voice's underlying samples with another preset's voice — keeps
+    the slot's name, level and event mappings, just changes how it sounds."""
+    p = load_preset(preset)
+    if not p or voice not in (p.get("voices") or {}):
+        return {"ok": False, "msg": "voice not found"}
+    sp = load_preset(src_preset)
+    if not sp or src_voice not in (sp.get("voices") or {}):
+        return {"ok": False, "msg": "source sound not found"}
+    svc = sp["voices"][src_voice]
+    srcdir = PRESETS / src_preset / "samples" / svc.get("dir", src_voice)
+    if not samples_in(srcdir):
+        return {"ok": False, "msg": "source has no samples"}
+    cfg = p["voices"][voice]
+    vdir = PRESETS / preset / "samples" / cfg.get("dir", voice)
+    try:
+        vdir.mkdir(parents=True, exist_ok=True)
+        for f in vdir.glob("*.wav"):            # clear old sound
+            f.unlink()
+        for f in samples_in(srcdir):            # copy new sound in (keeps NN_m{midi} pitch names)
+            shutil.copy2(f, vdir / f.name)
+    except Exception as e:
+        return {"ok": False, "msg": f"swap failed: {e}"}
+    # carry the sound-describing tonal fields; keep the slot's gain/mioi/reverb/delay
+    for k in ("tonal_anchor_midi", "tonal_range"):
+        if k in svc: cfg[k] = svc[k]
+        else: cfg.pop(k, None)
+    save_preset(preset, p)
+    return {"ok": True, "preset": preset, "voice": voice, "from": f"{src_preset}/{src_voice}"}
 
 def preset_detail(name):
     p = load_preset(name)
@@ -540,6 +636,14 @@ class Handler(BaseHTTPRequestHandler):
                 if res.get("ok") and b.get("set_active"):
                     cfg = load_config(); cfg["preset"] = res["name"]; save_config(cfg)
                 return self._send(200, res)
+            if path == "/api/preset/delete":
+                return self._send(200, delete_custom_preset(str(b.get("name", ""))))
+            if path == "/api/preset/rename":
+                return self._send(200, rename_custom_preset(str(b.get("name", "")), str(b.get("to", ""))))
+            if path == "/api/voice/swap":
+                return self._send(200, swap_voice_sound(
+                    b.get("preset", active_preset_name()), b.get("voice"),
+                    b.get("src_preset"), b.get("src_voice")))
             if path == "/api/counts/reset":
                 name = b.get("name", active_preset_name())
                 sd = STATE / name
