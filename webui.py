@@ -10,7 +10,7 @@ the live-activity view reads the very markers event.py touches when Claude works
 Run:  python3 webui.py [--port 8788] [--open]
   or: claudio web
 """
-import os, sys, json, time, random, signal, threading, subprocess, urllib.parse
+import os, sys, json, time, re, random, shutil, signal, threading, subprocess, urllib.parse
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -204,6 +204,107 @@ def full_state():
         "music": music_state(),
     }
 
+# ---------- custom preset builder ----------
+
+# Voice config keys worth carrying when a voice is borrowed from another preset
+# (everything but "dir", which we repoint at the copied sample folder).
+_CARRY_VOICE_KEYS = ("gain", "mioi", "rate_jitter", "reverb", "delay",
+                     "tonal_anchor_midi", "tonal_range")
+_RESERVED_NAMES = {"_archive", "samples", "default"}
+
+def build_palette():
+    """Every voice from every preset, so the builder can offer any sound."""
+    out = []
+    for name in list_preset_names():
+        p = load_preset(name) or {}
+        vs = []
+        for vn, vc in (p.get("voices", {}) or {}).items():
+            n = len(samples_in(PRESETS / name / "samples" / vc.get("dir", vn)))
+            if n:
+                vs.append({"voice": vn, "gain": vc.get("gain", 0.5), "samples": n})
+        if vs:
+            out.append({"preset": name, "description": p.get("description", ""), "voices": vs})
+    return out
+
+def _slug(s):
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())[:28]
+
+def create_custom_preset(spec):
+    name = _slug(spec.get("name", ""))
+    if len(name) < 2:
+        return {"ok": False, "msg": "name must be at least 2 letters/digits"}
+    if name in _RESERVED_NAMES or name in list_preset_names() or (PRESETS / name).exists():
+        return {"ok": False, "msg": f"'{name}' already exists — pick another name"}
+    base = spec.get("base")
+    picks = spec.get("voices") or []
+    if base and base not in list_preset_names():
+        base = None
+    if not base and not picks:
+        return {"ok": False, "msg": "pick at least one sound (or start from a preset)"}
+
+    target = PRESETS / name
+    try:
+        (target / "samples").mkdir(parents=True, exist_ok=False)
+    except Exception:
+        return {"ok": False, "msg": "could not create preset folder"}
+
+    try:
+        if base:
+            preset = load_preset(base) or {}
+            preset = json.loads(json.dumps(preset))         # deep copy
+            # copy the base's sample folders
+            for vn, vc in (preset.get("voices", {}) or {}).items():
+                d = vc.get("dir", vn)
+                src = PRESETS / base / "samples" / d
+                if src.exists():
+                    shutil.copytree(src, target / "samples" / d, dirs_exist_ok=True)
+            preset["description"] = spec.get("description") or f"custom · from {base}"
+        else:
+            preset = {"description": spec.get("description") or "custom preset",
+                      "master_gain": 0.5, "voices": {}, "events": {}}
+            # blank: no scale_pitches → the picker uses each voice's full sample set,
+            # which is the safe choice for a mixed bag of borrowed sounds.
+
+        voices = preset.setdefault("voices", {})
+        added = []
+        for pk in picks:
+            sp, sv = pk.get("src_preset"), pk.get("src_voice")
+            srcp = load_preset(sp) if sp else None
+            if not srcp or sv not in (srcp.get("voices") or {}):
+                continue
+            svc = srcp["voices"][sv]
+            srcdir = PRESETS / sp / "samples" / svc.get("dir", sv)
+            if not samples_in(srcdir):
+                continue
+            vn = _slug(pk.get("name") or sv) or sv
+            base_vn = vn; i = 2
+            while vn in voices:                              # de-dupe voice name
+                vn = f"{base_vn}{i}"; i += 1
+            shutil.copytree(srcdir, target / "samples" / vn, dirs_exist_ok=True)
+            nvc = {k: svc[k] for k in _CARRY_VOICE_KEYS if k in svc}
+            nvc["dir"] = vn
+            voices[vn] = nvc
+            added.append(vn)
+
+        if not voices:
+            shutil.rmtree(target, ignore_errors=True)
+            return {"ok": False, "msg": "none of the chosen sounds had samples"}
+
+        # event map: keep base's; for a blank preset, auto-spread voices across
+        # the 9 events so it makes sound immediately (refine later in Events tab).
+        evmap = preset.setdefault("events", {})
+        if not base:
+            vlist = list(voices.keys())
+            for i, ev in enumerate(ALL_EVENTS):
+                evmap[ev] = {"default": vlist[i % len(vlist)]}
+
+        save_json(target / "preset.json", preset)
+        save_json(target / "preset.default.json", preset)   # so "reset preset" works
+        return {"ok": True, "name": name, "voices": list(voices.keys()), "added": added}
+    except Exception as e:
+        shutil.rmtree(target, ignore_errors=True)
+        return {"ok": False, "msg": f"build failed: {e}"}
+
 def preset_detail(name):
     p = load_preset(name)
     if p is None: return None
@@ -327,6 +428,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, activity(name))
         if path == "/api/donate":
             return self._send(200, load_json(HERE / "donate.json", {"methods": []}))
+        if path == "/api/palette":
+            return self._send(200, {"palette": build_palette()})
         if path == "/api/record/status":
             return self._send(200, record_status())
         if path.startswith("/recordings/"):
@@ -432,6 +535,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/test":
                 fire_test(b.get("name"))
                 return self._send(200, {"ok": True})
+            if path == "/api/preset/create":
+                res = create_custom_preset(b)
+                if res.get("ok") and b.get("set_active"):
+                    cfg = load_config(); cfg["preset"] = res["name"]; save_config(cfg)
+                return self._send(200, res)
             if path == "/api/counts/reset":
                 name = b.get("name", active_preset_name())
                 sd = STATE / name

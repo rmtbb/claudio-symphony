@@ -159,6 +159,79 @@ function openBrowser() {
 }
 function closeBrowser() { $('#browser').hidden = true; }
 
+/* ---------------- preset builder ---------------- */
+let BANK = null, bPicks = [], bMode = 'blank';
+const pkKey = (sp, sv) => sp + '/' + sv;
+async function openBuilder() {
+  closeBrowser();
+  $('#builder').hidden = false;
+  bPicks = []; bMode = 'blank'; $('#bName').value = '';
+  $$('.b-seg').forEach(s => s.classList.toggle('on', s.dataset.mode === 'blank'));
+  const dup = $('#bDupSel'); dup.hidden = true;
+  dup.innerHTML = (STATE.presets || []).map(p => `<option>${p.name}</option>`).join('');
+  if (!BANK) { try { BANK = (await api.get('/api/palette')).palette; } catch (e) { BANK = []; } }
+  $('#bSearch').value = '';
+  renderPalette(''); renderBuilderSel();
+  setTimeout(() => $('#bName').focus(), 50);
+}
+function closeBuilder() { $('#builder').hidden = true; }
+function renderPalette(filter) {
+  const f = (filter || '').trim().toLowerCase();
+  const wrap = $('#bPalette'); wrap.innerHTML = '';
+  (BANK || []).forEach(grp => {
+    const voices = grp.voices.filter(v => !f || v.voice.toLowerCase().includes(f) || grp.preset.includes(f));
+    if (!voices.length) return;
+    const sec = document.createElement('div'); sec.className = 'b-grp';
+    sec.innerHTML = `<div class="b-grp-h">${grp.preset}</div>`;
+    const row = document.createElement('div'); row.className = 'b-chips';
+    voices.forEach(v => {
+      const key = pkKey(grp.preset, v.voice);
+      const picked = bPicks.some(p => p.key === key);
+      const chip = document.createElement('div'); chip.className = 'b-chip' + (picked ? ' picked' : ''); chip.dataset.pk = key;
+      chip.innerHTML = `<button class="b-play" title="hear it">▶</button><span class="b-vn">${v.voice}</span><button class="b-add">${picked ? '✓' : '+'}</button>`;
+      chip.querySelector('.b-play').onclick = () => { api.post('/api/voice/play', { preset: grp.preset, voice: v.voice }); toast(`<span class="g">${grp.preset}</span> · ${v.voice}`); };
+      chip.querySelector('.b-add').onclick = () => { togglePick(grp.preset, v.voice); };
+      row.appendChild(chip);
+    });
+    sec.appendChild(row); wrap.appendChild(sec);
+  });
+}
+function togglePick(sp, sv) {
+  const key = pkKey(sp, sv); const i = bPicks.findIndex(p => p.key === key);
+  const nowPicked = i < 0;
+  if (i >= 0) bPicks.splice(i, 1); else bPicks.push({ src_preset: sp, src_voice: sv, key });
+  // update the matching palette chip in place (don't re-render — keeps scroll)
+  const chip = $(`#bPalette .b-chip[data-pk="${cssEsc(key)}"]`);
+  if (chip) { chip.classList.toggle('picked', nowPicked); chip.querySelector('.b-add').textContent = nowPicked ? '✓' : '+'; }
+  renderBuilderSel();
+}
+function renderBuilderSel() {
+  const el = $('#bSel');
+  const dupNote = bMode === 'dup' ? `<span class="b-sel-note">+ all of <b>${$('#bDupSel').value}</b>'s voices</span>` : '';
+  if (!bPicks.length && bMode !== 'dup') { el.innerHTML = `<span class="b-sel-empty">no sounds yet — tap <b>+</b> on any sound below to add it</span>`; return; }
+  el.innerHTML = `<span class="b-sel-lbl">your sounds (${bPicks.length})</span>` +
+    bPicks.map(p => `<span class="b-sel-chip" data-key="${p.key}">${p.src_voice}<small>${p.src_preset}</small><button class="b-x">✕</button></span>`).join('') + dupNote;
+  el.querySelectorAll('.b-sel-chip').forEach(c => c.querySelector('.b-x').onclick = () => {
+    const p = bPicks.find(x => x.key === c.dataset.key); if (p) togglePick(p.src_preset, p.src_voice);
+  });
+}
+async function builderCreate() {
+  const name = $('#bName').value.trim();
+  if (!name) { toast('give your preset a name'); $('#bName').focus(); return; }
+  const body = { name, set_active: true,
+    voices: bPicks.map(p => ({ src_preset: p.src_preset, src_voice: p.src_voice })) };
+  if (bMode === 'dup') body.base = $('#bDupSel').value;
+  const btn = $('#bCreate'); btn.disabled = true; btn.textContent = 'building…';
+  const r = await api.post('/api/preset/create', body);
+  btn.disabled = false; btn.textContent = 'Create →';
+  if (!r.ok) { toast(r.msg || 'could not create'); return; }
+  closeBuilder();
+  const s = await api.get('/api/state'); STATE.presets = s.presets; STATE.active = s.active;
+  $('#npName').textContent = s.active;
+  setFocus({ kind: 'global' });
+  toast(`built <span class="g">${r.name}</span> · ${r.voices.length} voices — now playing`);
+}
+
 /* ---------------- tip / buy-me-a-coffee ---------------- */
 let DONATE = null;
 async function openTip() {
@@ -507,9 +580,20 @@ function wireGlobal() {
   $('#recBtn').onclick = openRec;
   $('#recClose').onclick = closeRec;
   $('#recModal').onclick = (e) => { if (e.target.id === 'recModal') closeRec(); };
+  $('#buildBtn').onclick = openBuilder;
+  $('#builderClose').onclick = closeBuilder;
+  $('#builder').onclick = (e) => { if (e.target.id === 'builder') closeBuilder(); };
+  $('#bSearch').oninput = e => renderPalette(e.target.value);
+  $('#bCreate').onclick = builderCreate;
+  $('#bDupSel').onchange = renderBuilderSel;
+  $$('.b-seg').forEach(s => s.onclick = () => {
+    bMode = s.dataset.mode; $$('.b-seg').forEach(x => x.classList.toggle('on', x === s));
+    $('#bDupSel').hidden = bMode !== 'dup'; renderBuilderSel();
+  });
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    if (!$('#browser').hidden) closeBrowser();
+    if (!$('#builder').hidden) closeBuilder();
+    else if (!$('#browser').hidden) closeBrowser();
     else if (!$('#tipModal').hidden) closeTip();
     else if (!$('#recModal').hidden) closeRec();
   });

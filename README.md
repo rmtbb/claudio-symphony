@@ -201,7 +201,9 @@ claudio song use mario                    # drive a voice from a MIDI melody
 
 ## 🎨 Make your own preset
 
-Each preset is three things:
+**The easy way — build one in the browser.** Open `claudio web`, hit **✚ Build a preset**, and you get a palette of *every voice from all 36 presets*. Audition any sound with ▶, pick the ones you love, name it, and hit Create — Claudio copies those samples into a new, self-contained preset that works everywhere instantly (start blank, or duplicate an existing preset and add to it). No code, no render step.
+
+**The hands-on way — author it in code.** Each preset is three things:
 
 ```
 presets/<your-preset>/

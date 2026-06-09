@@ -127,9 +127,38 @@
           <div class="browser-sub" id="browserSub"></div>
         </div>
         <div class="browser-search"><span class="ico">⌕</span><input id="browserSearch" type="text" placeholder="search presets…" autocomplete="off"></div>
+        <button class="build-btn" id="buildBtn" title="Build your own preset from any sounds">✚ Build a preset</button>
         <button class="browser-close" id="browserClose">✕</button>
       </header>
       <div class="browser-grid" id="browserGrid"></div>
+    </div>
+  </div>
+
+  <!-- preset builder overlay -->
+  <div class="builder" id="builder" hidden>
+    <div class="builder-panel">
+      <header class="builder-head">
+        <div>
+          <div class="builder-title">✚ Build a preset</div>
+          <div class="builder-sub">Pick sounds from any of the 36 presets, name it, and make it yours.</div>
+        </div>
+        <button class="builder-close" id="builderClose">✕</button>
+      </header>
+      <div class="builder-top">
+        <input id="bName" class="b-name" type="text" placeholder="name your preset…" maxlength="28" autocomplete="off">
+        <div class="b-start">
+          <span class="b-start-lbl">start</span>
+          <button class="b-seg on" data-mode="blank">blank</button>
+          <button class="b-seg" data-mode="dup">duplicate</button>
+          <select class="vsel" id="bDupSel" hidden></select>
+        </div>
+        <button class="b-create" id="bCreate">Create →</button>
+      </div>
+      <div class="builder-sel" id="bSel"></div>
+      <div class="builder-body">
+        <div class="b-search"><span class="ico">⌕</span><input id="bSearch" type="text" placeholder="search sounds across all presets…" autocomplete="off"></div>
+        <div class="b-palette" id="bPalette"></div>
+      </div>
     </div>
   </div>
 
