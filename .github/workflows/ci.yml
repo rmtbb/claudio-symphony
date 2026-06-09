@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  # Pure-logic audio tests run identically on all three OSes — detection,
+  # argv construction, scheduling, degradation, stop and the numpy pre-render
+  # are exercised without any audio device or external player.
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install numpy
+      - run: python -m unittest tests.test_audio -v
+
+  # Guard: the macOS/POSIX-only primitives must live ONLY in audio.py. If any
+  # runtime file reintroduces one, the README's "audio is one module" promise
+  # is broken — fail loudly.
+  posix-ism-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No afplay / sh / pkill / env-spawn outside audio.py
+        run: |
+          # Match playback/process POSIX-isms, but ignore shebang lines (#!).
+          if grep -nE '/usr/bin/afplay|/bin/sh|pkill|start_new_session|/usr/bin/open|/usr/bin/env|os\.execvp|os\.kill' \
+               event.py cli.py drone.py webui.py tune.py | grep -vE '^[^:]+:[0-9]+:#!'; then
+            echo "::error::A macOS/POSIX-only primitive leaked outside audio.py (see matches above)."
+            exit 1
+          fi
+          echo "clean: playback/process primitives are confined to audio.py"

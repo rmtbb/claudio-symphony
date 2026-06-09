@@ -7,7 +7,7 @@ Run from a fresh clone:
     python3 install.py
 
 This will:
-  1. Verify dependencies (Python 3, numpy, /usr/bin/afplay).
+  1. Verify dependencies (Python 3, numpy, and an audio player for your OS).
   2. Render samples for every preset under presets/.
   3. Write a starter config.json (preset=meadow, master 0.55, drone 0.0)
      unless one already exists.
@@ -15,7 +15,7 @@ This will:
 
 Re-run any time to regenerate samples (existing samples are overwritten).
 """
-import sys, shutil, subprocess, os, json
+import sys, subprocess, os, json
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -51,14 +51,27 @@ try:
 except ImportError:
     fatal("numpy not installed. Try: pip install numpy")
 
-step("Checking afplay (macOS)")
-if not shutil.which("afplay"):
-    print("  ✗ /usr/bin/afplay not found.")
-    print("    Claudio currently uses macOS's afplay. Linux/Windows support")
-    print("    is a small patch — PRs welcome at:")
-    print("    https://github.com/rmtbb/claudio-symphony")
-    sys.exit(1)
-print("  afplay ✓")
+step("Checking audio backend")
+sys.path.insert(0, str(HERE))
+import audio
+ok, fatal_if_missing, msg = audio.install_check()
+print("  " + msg)
+if not ok:
+    print("  ✗ No capable audio player found.")
+    if audio.IS_LINUX:
+        print("    Best:  sudo apt install ffmpeg     (Debian/Ubuntu)")
+        print("           sudo dnf install ffmpeg     (Fedora; needs RPM Fusion)")
+        print("           sudo pacman -S ffmpeg       (Arch)")
+        print("    (pw-play / paplay are often already present and give volume;")
+        print("     ffmpeg adds full pitch-shift quality via ffplay.)")
+    elif audio.IS_WIN:
+        print("    Best:  winget install -e --id Gyan.FFmpeg")
+        print("    (Otherwise PowerShell MediaPlayer / winsound are used.)")
+    elif audio.IS_MAC:
+        print("    macOS ships afplay at /usr/bin/afplay — this should not happen.")
+    if fatal_if_missing:
+        sys.exit(1)
+    print("    Samples will still render; audio plays once a backend is installed.")
 
 step("Rendering presets")
 preset_dirs = sorted(p for p in PRESETS.iterdir()
@@ -84,7 +97,7 @@ else:
           f"master_gain={DEFAULT_CONFIG['master_gain']}, "
           f"drone_gain={DEFAULT_CONFIG['drone_gain']}")
 
-claudio = HERE / "bin" / "claudio"
+claudio = HERE / "bin" / ("claudio.cmd" if sys.platform.startswith("win") else "claudio")
 print()
 print("─" * 60)
 print(" Done. Next steps:")

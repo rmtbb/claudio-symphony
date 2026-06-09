@@ -82,12 +82,13 @@ MIDI songs + quantization
 Support
   coffee                           Show on-chain tip addresses (alias: tip, donate)
 """
-import os, sys, json, time, fnmatch, subprocess, signal
+import os, sys, json, time, fnmatch
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import song as song_mod  # noqa: E402
+import audio  # noqa: E402  (cross-platform playback + process helpers)
 
 PRESETS = HERE / "presets"
 STATE = HERE / "state"
@@ -213,8 +214,7 @@ def drone_pid():
     try:
         if not PID_FILE.exists(): return None
         pid = int(PID_FILE.read_text().strip())
-        os.kill(pid, 0)
-        return pid
+        return pid if audio.pid_alive(pid) else None
     except Exception:
         return None
 
@@ -229,11 +229,7 @@ def cmd_start():
         return
     LOGS.mkdir(exist_ok=True)
     out = LOGS / "drone.out"
-    subprocess.Popen(
-        ["/usr/bin/env", "python3", DRONE_PATH],
-        stdout=open(out, "a"), stderr=subprocess.STDOUT,
-        stdin=subprocess.DEVNULL, start_new_session=True, close_fds=True,
-    )
+    audio.spawn_python(DRONE_PATH, detached=True, log_file=str(out))
     time.sleep(0.4)
     pid = drone_pid()
     print(f"drone started pid={pid}" if pid else f"launch attempted; check {LOGS / 'drone.log'}")
@@ -242,9 +238,12 @@ def cmd_stop():
     pid = drone_pid()
     if not pid: print("drone not running"); return
     try:
-        os.kill(pid, signal.SIGTERM)
+        audio.terminate_pid(pid)
+        if audio.IS_WIN:
+            # Windows has no deliverable SIGTERM handler; ask the loop to stop.
+            (audio.STATE / "drone.stop").write_text("1")
         time.sleep(0.3)
-        subprocess.run(["pkill", "-f", "afplay .*drone.wav"], check=False)
+        audio.stop_drone()          # silence the in-flight drone player now
         print(f"drone stopped pid={pid}")
     except Exception as e:
         print(f"stop failed: {e}")
@@ -261,8 +260,8 @@ def cmd_off():
     # stop drone if running
     if drone_pid():
         cmd_stop()
-    # kill any in-flight afplay so existing tails go silent now, not at end
-    subprocess.run(["pkill", "-f", "afplay"], check=False)
+    # kill any in-flight players so existing tails go silent now, not at end
+    audio.stop_all()
     print("🔇 OFF — run `claudio on` to restore")
 
 def cmd_on():
@@ -646,7 +645,7 @@ def _regen_voice(pname, vname):
     if not render.exists():
         print(f"  (preset '{pname}' has no render.py; reverb change saved but "
               f"samples not regenerated)"); return
-    subprocess.run(["/usr/bin/env", "python3", str(render), vname], check=False)
+    audio.spawn_python(render, [vname])
 
 
 def cmd_voice(args):
@@ -713,7 +712,7 @@ def cmd_voice(args):
         return
     if sub == "play":
         # fire one trigger via event.py with a fake event that maps to this voice
-        # easier: call afplay directly on a random sample
+        # easier: play a random sample directly via the audio backend
         import random
         d = PRESETS / pname / "samples" / v.get("dir", name)
         samples = sorted(p for p in d.iterdir() if p.suffix == ".wav") if d.exists() else []
@@ -722,11 +721,7 @@ def cmd_voice(args):
         master = float(cfg.get("master_gain", preset.get("master_gain", 0.5)))
         gain = max(0.0, min(1.0, v.get("gain", 0.5) * master))
         sample = random.choice(samples)
-        subprocess.Popen(
-            ["/usr/bin/afplay", "-v", f"{gain:.3f}", str(sample)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True, close_fds=True,
-        )
+        audio.play_simple(sample, gain)
         print(f"playing {name} → {sample.name} @ v={gain:.2f}")
         return
     print(f"unknown voice subcommand: {sub}")
@@ -808,7 +803,7 @@ def cmd_regen(args):
     render = PRESETS / name / "render.py"
     legacy = HERE / "synth.py"
     if render.exists():
-        subprocess.run(["/usr/bin/env", "python3", str(render)], check=False)
+        audio.spawn_python(render)
     elif name == "cathedral" and legacy.exists():
         # legacy synth writes into samples/ at top level; need to redirect
         # to presets/cathedral/samples — but this is rarely needed since
@@ -821,11 +816,7 @@ def cmd_regen(args):
 # ---------- test demo ----------
 
 def fire_event(payload):
-    p = subprocess.Popen(
-        ["/usr/bin/env", "python3", EVENT_PATH],
-        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-    )
-    p.communicate(json.dumps(payload).encode())
+    audio.spawn_python(EVENT_PATH, stdin_bytes=json.dumps(payload).encode())
 
 def clear_mioi(preset_name):
     sd = STATE / preset_name
@@ -1217,11 +1208,7 @@ _DEMO_SCRIPT = [
 
 
 def _fire_event_payload(payload):
-    p = subprocess.Popen(
-        ["/usr/bin/env", "python3", EVENT_PATH],
-        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-    )
-    p.communicate(json.dumps(payload).encode())
+    audio.spawn_python(EVENT_PATH, stdin_bytes=json.dumps(payload).encode())
 
 
 def cmd_demo(args):
@@ -1353,8 +1340,8 @@ def cmd_status_line(args):
 # ---------- tune (TUI) ----------
 
 def cmd_tune():
-    # exec so curses gets a clean tty handoff
-    os.execvp("/usr/bin/env", ["/usr/bin/env", "python3", TUNE_PATH])
+    # exec so curses gets a clean tty handoff (spawn-and-exit on Windows)
+    audio.exec_python(TUNE_PATH)
 
 # ---------- web UI ----------
 
@@ -1366,9 +1353,9 @@ def cmd_web(args):
     for i, a in enumerate(args):
         if a == "--port" and i + 1 < len(args): port = args[i + 1]
         elif a == "--no-open": do_open = False
-    cmd = ["/usr/bin/env", "python3", web, "--port", port]
-    if do_open: cmd.append("--open")
-    os.execvp("/usr/bin/env", cmd)
+    args = ["--port", port]
+    if do_open: args.append("--open")
+    audio.exec_python(web, args)
 
 # ---------- support ----------
 

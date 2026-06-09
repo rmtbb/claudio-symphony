@@ -9,16 +9,18 @@ Reads JSON from stdin, resolves the preset to use for this event using
   3. global default (config.json -> preset)
 
 Then maps the event through the preset's mapping table, applies per-voice
-MIOI rate-limiting + pressure accumulation, and launches afplay detached.
+MIOI rate-limiting + pressure accumulation, and launches the audio backend
+(audio.py) detached — afplay on macOS, ffplay/etc. on Linux/Windows.
 
 Always exits 0.
 """
-import sys, os, json, time, fnmatch, subprocess, random, re, shlex
+import sys, os, json, time, fnmatch, random, re
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import song as song_mod  # noqa: E402  (sibling module, must come after sys.path)
+import audio  # noqa: E402  (cross-platform playback backend; same path insert)
 PRESETS = HERE / "presets"
 STATE = HERE / "state"
 LOGS = HERE / "logs"
@@ -516,11 +518,12 @@ def check_mioi(preset_name, voice, mioi_s):
 
 def play(sample_path, gain_linear, shift_semitones=0, delay_s=0.0,
           rate_jitter=False, echo=None):
-    """Launch a detached afplay. `shift_semitones` triggers afplay's -r rate
-    so song-mode notes land on the requested pitch even when the nearest
-    sampled pitch is off. `delay_s` (used by quantization) defers playback
-    via a `sh -c sleep ...; afplay ...` trampoline so the hook returns
-    immediately and the play lands on the next grid boundary.
+    """Launch a detached play via the cross-platform backend (audio.play).
+    `shift_semitones` triggers a playback-rate shift (afplay's -r on macOS,
+    the equivalent on other players) so song-mode notes land on the requested
+    pitch even when the nearest sampled pitch is off. `delay_s` (used by
+    quantization) defers playback via a detached sleep-trampoline so the hook
+    returns immediately and the play lands on the next grid boundary.
     `rate_jitter` adds ±0.4% (≈±7 cents) of pitch wobble — below conscious
     pitch perception, but the ear reads it as 'this is alive' rather than
     'mechanical recall'. Opt-in per voice via preset.json `rate_jitter: true`.
@@ -531,44 +534,13 @@ def play(sample_path, gain_linear, shift_semitones=0, delay_s=0.0,
     afplay copies at decreasing gain spaced by `ms` — gives a feedback-delay
     feel at trigger time WITHOUT re-rendering. Per-event-mapping, so different
     alert types (Stop, SubagentStop, Notification) can have different echoes."""
-    if sample_path is None: return
-    v = max(0.0, min(1.0, gain_linear))
-    cmd_base = ["/usr/bin/afplay", "-v"]
-    base_rate = 2 ** (shift_semitones / 12.0) if shift_semitones else 1.0
-    if rate_jitter:
-        base_rate *= 1.0 + random.uniform(-0.004, 0.004)
-    rate = max(0.25, min(4.0, base_rate)) if (shift_semitones or rate_jitter) else None
-
-    def _spawn(gain_v, extra_delay):
-        cmd = list(cmd_base) + [f"{gain_v:.3f}"]
-        if rate is not None:
-            cmd += ["-r", f"{rate:.5f}"]
-        cmd.append(str(sample_path))
-        try:
-            total_delay = delay_s + extra_delay
-            if total_delay > 0.005:
-                quoted = " ".join(shlex.quote(c) for c in cmd)
-                full = ["/bin/sh", "-c", f"sleep {total_delay:.4f}; exec {quoted}"]
-            else:
-                full = cmd
-            subprocess.Popen(
-                full,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                start_new_session=True, close_fds=True,
-            )
-        except Exception as e:
-            log(f"afplay launch failed: {e}")
-
-    _spawn(v, 0.0)
-    if echo and isinstance(echo, dict):
-        ms = max(40, min(2000, int(echo.get("ms", 320))))
-        fb = max(0.0, min(0.85, float(echo.get("feedback", 0.30))))
-        count = max(0, min(8, int(echo.get("count", 3))))
-        for i in range(1, count + 1):
-            echo_gain = v * (fb ** i)
-            if echo_gain < 0.005:
-                break
-            _spawn(echo_gain, (ms / 1000.0) * i)
+    # All afplay/-r/-v/sh-trampoline/echo mechanics now live in audio.py so
+    # the same call works on macOS, Linux, and Windows. The musical math
+    # (rate from semitones, jitter, gain clamp, echo decay) is unchanged —
+    # audio.play() reproduces it exactly, and on macOS emits the identical
+    # afplay argv this function used to build.
+    audio.play(sample_path, gain_linear, shift_semitones=shift_semitones,
+               delay_s=delay_s, rate_jitter=rate_jitter, echo=echo)
 
 def trigger(preset_name, preset, voice, song_name=None, quant_override=None,
              scale_override_pcs=None, scale_override_roots=None,

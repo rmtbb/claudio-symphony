@@ -10,12 +10,13 @@ the live-activity view reads the very markers event.py touches when Claude works
 Run:  python3 webui.py [--port 8788] [--open]
   or: claudio web
 """
-import os, sys, json, time, random, threading, subprocess, urllib.parse
+import os, sys, json, time, random, threading, urllib.parse
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import audio  # noqa: E402  (cross-platform playback + process helpers)
 PRESETS = HERE / "presets"
 STATE = HERE / "state"
 CONFIG = HERE / "config.json"
@@ -75,10 +76,7 @@ def samples_in(d):
 
 def play_sample(path, gain):
     try:
-        subprocess.Popen(
-            ["/usr/bin/afplay", "-v", f"{clamp(gain,0,1):.3f}", str(path)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True, close_fds=True)
+        audio.play_simple(path, clamp(gain, 0, 1))
         return True
     except Exception:
         return False
@@ -101,9 +99,7 @@ def regen_voice(preset, voice):
     if not render.exists(): return False, "no render.py for this preset"
     def _run():
         try:
-            subprocess.run(["/usr/bin/env", "python3", str(render), voice],
-                           cwd=str(HERE), check=False,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            audio.spawn_python(render, [voice], cwd=str(HERE))
         except Exception:
             pass
     threading.Thread(target=_run, daemon=True).start()
@@ -177,9 +173,8 @@ def fire_test(preset_hint=None):
         for name, extra in seq:
             payload = {"hook_event_name": name, "session_id": "webtest", **extra}
             try:
-                p = subprocess.Popen(["/usr/bin/env", "python3", EVENT_PY],
-                                     stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                p.communicate(json.dumps(payload).encode(), timeout=3)
+                audio.spawn_python(EVENT_PY, stdin_bytes=json.dumps(payload).encode(),
+                                   timeout=3)
             except Exception:
                 pass
             time.sleep(1.4)
@@ -384,9 +379,8 @@ class Handler(BaseHTTPRequestHandler):
                 name = b.get("name", active_preset_name())
                 render = PRESETS / name / "render.py"
                 if render.exists():
-                    threading.Thread(target=lambda: subprocess.run(
-                        ["/usr/bin/env", "python3", str(render)], cwd=str(HERE), check=False,
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
+                    threading.Thread(target=lambda: audio.spawn_python(render, cwd=str(HERE)),
+                                     daemon=True).start()
                 return self._send(200, {"ok": render.exists()})
             if path == "/api/preset/reset":
                 return self._preset_reset(b)
@@ -466,9 +460,8 @@ class Handler(BaseHTTPRequestHandler):
         # full regen in background
         render = PRESETS / preset / "render.py"
         if render.exists():
-            threading.Thread(target=lambda: subprocess.run(
-                ["/usr/bin/env", "python3", str(render)], cwd=str(HERE), check=False,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
+            threading.Thread(target=lambda: audio.spawn_python(render, cwd=str(HERE)),
+                             daemon=True).start()
         return self._send(200, {"ok": True, "regen": render.exists()})
 
     def _session_set(self, b, key, value):
@@ -533,8 +526,7 @@ def main():
     url = f"http://127.0.0.1:{port}/"
     print(f"Claudio web UI → {url}  (Ctrl-C to stop)")
     if do_open:
-        try: subprocess.Popen(["/usr/bin/open", url])
-        except Exception: pass
+        audio.open_url(url)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

@@ -33,3 +33,6 @@ venv/
 
 # Local-only: graphify knowledge-graph artifact
 graphify-out/
+
+# Test fixtures (generated)
+tests/_fixture_*.wav
