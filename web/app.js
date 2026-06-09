@@ -10,6 +10,7 @@ const PALETTE = ['#e8b25c', '#ffd98a', '#8fc0a6', '#8ab6d6', '#e58c66', '#c98c34
 let STATE = null, DETAIL = null;
 let FOCUS = { kind: 'global' };        // {kind:'global'} | {kind:'session', id, s}
 let lastVoiceTs = {}, lastEventTs = {};
+let EVT_COUNTS = {}, SORT_BY_FREQ = false;   // event fire-frequency + opt-in "most fired" sort
 const cssEsc = (s) => (window.CSS && CSS.escape) ? CSS.escape(s) : s;
 
 const toast = (() => { const el = $('#toast'); let t;
@@ -339,18 +340,31 @@ function renderEvents() {
   const wrap = $('#events'); wrap.innerHTML = ''; const P = editPreset();
   const opts = (sel) => ['<option value="__none__"' + (sel == null ? ' selected' : '') + '>— silent —</option>']
     .concat(DETAIL.voice_names.map(n => `<option ${n === sel ? 'selected' : ''}>${n}</option>`)).join('');
-  DETAIL.events.forEach(ev => {
+
+  const tools = document.createElement('div'); tools.className = 'etools';
+  tools.innerHTML = `<span class="etools-note">brighter = fired recently · bar = how often</span>
+    <button class="esort${SORT_BY_FREQ ? ' on' : ''}" id="esort" title="sort by how often each event fires">↕ most fired</button>
+    <button class="ereset" id="ereset" title="reset the fire counters">reset counts</button>`;
+  tools.querySelector('#esort').onclick = () => { SORT_BY_FREQ = !SORT_BY_FREQ; renderEvents(); };
+  tools.querySelector('#ereset').onclick = async () => { await api.post('/api/counts/reset', { name: P }); EVT_COUNTS = {}; toast('fire counts reset'); paintFreq(); };
+  wrap.appendChild(tools);
+
+  let evs = DETAIL.events.slice();
+  if (SORT_BY_FREQ) evs.sort((a, b) => (EVT_COUNTS[b.event] || 0) - (EVT_COUNTS[a.event] || 0));
+
+  evs.forEach(ev => {
+    const g = document.createElement('div'); g.className = 'egroup'; g.dataset.event = ev.event;
     const row = document.createElement('div'); row.className = 'erow'; row.dataset.event = ev.event;
-    row.innerHTML = `<span class="edot"></span><span class="elabel" title="click to hear it"><span class="ename">${ev.event}</span></span><select class="vsel ${ev.default==null?'silent':''}">${opts(ev.default)}</select>`;
+    row.innerHTML = `<span class="edot"></span><span class="elabel" title="click to hear it"><span class="ename">${ev.event}</span><span class="ecount" data-event="${ev.event}"></span></span><select class="vsel ${ev.default==null?'silent':''}">${opts(ev.default)}</select><i class="efreq" data-event="${ev.event}"></i>`;
     row.querySelector('select').onchange = e => { api.post('/api/map', { preset: P, event: ev.event, key: 'default', voice: e.target.value }); e.target.classList.toggle('silent', e.target.value === '__none__'); };
     row.querySelector('.elabel').onclick = () => playMapped(row, ev.event);
-    wrap.appendChild(row);
+    g.appendChild(row);
     Object.entries(ev.by_tool).forEach(([tool, voice]) => {
       const sr = document.createElement('div'); sr.className = 'erow sub';
       sr.innerHTML = `<span></span><span class="elabel" title="click to hear it"><span class="ename">${tool}</span><span class="ekey">by-tool</span></span><select class="vsel ${voice==null?'silent':''}">${opts(voice)}</select>`;
       sr.querySelector('select').onchange = e => api.post('/api/map', { preset: P, event: ev.event, key: tool, voice: e.target.value });
       sr.querySelector('.elabel').onclick = () => playMapped(sr, tool);
-      wrap.appendChild(sr);
+      g.appendChild(sr);
     });
     if (ev.on_failure !== null && ev.on_failure !== undefined) {
       const ofv = ev.on_failure === '__none__' ? null : ev.on_failure;
@@ -358,9 +372,29 @@ function renderEvents() {
       sr.innerHTML = `<span></span><span class="elabel" title="click to hear it"><span class="ename">on failure</span><span class="ekey">fallback</span></span><select class="vsel ${ofv==null?'silent':''}">${opts(ofv)}</select>`;
       sr.querySelector('select').onchange = e => api.post('/api/map', { preset: P, event: ev.event, key: 'on_failure', voice: e.target.value });
       sr.querySelector('.elabel').onclick = () => playMapped(sr, 'on failure');
-      wrap.appendChild(sr);
+      g.appendChild(sr);
     }
+    wrap.appendChild(g);
   });
+  paintFreq();
+}
+function paintFreq() {
+  if (!DETAIL || !DETAIL.events) return;
+  const maxc = Math.max(1, ...DETAIL.events.map(e => EVT_COUNTS[e.event] || 0));
+  DETAIL.events.forEach(e => {
+    const c = EVT_COUNTS[e.event] || 0;
+    const cn = $(`.ecount[data-event="${cssEsc(e.event)}"]`); if (cn) cn.textContent = c ? `×${c}` : '';
+    const bar = $(`.efreq[data-event="${cssEsc(e.event)}"]`); if (bar) bar.style.width = (100 * c / maxc).toFixed(1) + '%';
+  });
+}
+function maybeSortEvents() {
+  if (!SORT_BY_FREQ) return;
+  const wrap = $('#events'); if (!wrap) return;
+  const focused = document.activeElement && document.activeElement.closest && document.activeElement.closest('#events select');
+  if (focused) return;                     // don't yank rows out from under an open dropdown
+  const groups = [...wrap.querySelectorAll('.egroup')];
+  const sorted = groups.slice().sort((a, b) => (EVT_COUNTS[b.dataset.event] || 0) - (EVT_COUNTS[a.dataset.event] || 0));
+  if (sorted.some((g, i) => g !== groups[i])) sorted.forEach(g => wrap.appendChild(g));
 }
 
 function renderSettings() {
@@ -506,6 +540,7 @@ async function poll() {
   $('#pulseTxt').textContent = a.muted ? 'muted' : (live ? 'listening' : 'idle');
   Object.entries(a.voices).forEach(([vn, ts]) => { if (ts && ts !== lastVoiceTs[vn]) { if (lastVoiceTs[vn] !== undefined) flare(vn); lastVoiceTs[vn] = ts; } paintDot($(`.vrow[data-voice="${cssEsc(vn)}"] .orb`), a.now - ts, true); });
   Object.entries(a.events).forEach(([en, ts]) => { paintDot($(`.erow[data-event="${cssEsc(en)}"] .edot`), a.now - ts, false); });
+  if (a.counts) { EVT_COUNTS = a.counts; paintFreq(); maybeSortEvents(); }
   // refresh rail when sessions change (not whole stage)
   if (a.sessions) {
     STATE.sessions = a.sessions;
@@ -515,14 +550,23 @@ async function poll() {
     if (sig !== STATE._sig && !editing) { STATE._sig = sig; renderRail(); }
   }
 }
+const RECENCY_WINDOW = 45;   // seconds a fired dot lingers as a dim ember before going faint
 function paintDot(el, age, isVoice) {
   if (!el) return;
-  if (age == null || age > 1e8 || !isFinite(age)) { el.style.background = 'var(--faint)'; el.style.boxShadow = 'none'; return; }
+  if (age == null || age > 1e8 || !isFinite(age)) { el.style.background = 'var(--faint)'; el.style.boxShadow = 'none'; el.style.opacity = .5; return; }
   const c = isVoice ? (el.style.getPropertyValue('--c') || 'var(--sage)') : 'var(--sage)';
-  if (age < 0.6) { el.style.background = c; el.style.boxShadow = `0 0 10px ${c}`; el.style.opacity = 1; }
-  else if (age < 1.6) { el.style.background = c; el.style.opacity = .8; el.style.boxShadow = `0 0 5px ${c}`; }
-  else if (age < 3.2) { el.style.background = c; el.style.opacity = .45; el.style.boxShadow = 'none'; }
-  else { el.style.background = 'var(--faint)'; el.style.opacity = 1; el.style.boxShadow = 'none'; }
+  // bright flash on fire, then fade almost all the way out and HOLD a faint
+  // ember for ~RECENCY_WINDOW so a glance shows what fired recently.
+  let op, glow;
+  if (age < 0.5) { op = 1; glow = 12; }
+  else if (age < 2) { op = 0.8; glow = 5; }
+  else if (age < 2 + RECENCY_WINDOW) {
+    const k = (age - 2) / RECENCY_WINDOW;        // 0 → 1 across the window
+    op = 0.55 - 0.42 * k;                        // ~0.55 down to ~0.13
+    glow = 2 * (1 - k);
+  } else { el.style.background = 'var(--faint)'; el.style.opacity = .5; el.style.boxShadow = 'none'; return; }
+  el.style.background = c; el.style.opacity = op.toFixed(2);
+  el.style.boxShadow = glow > 0.3 ? `0 0 ${glow.toFixed(1)}px ${c}` : 'none';
 }
 
 /* ---------------- constellation canvas ---------------- */

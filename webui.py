@@ -244,13 +244,17 @@ def activity(name):
     def ts(path):
         try: return float(path.read_text().strip())
         except Exception: return 0.0
+    def csize(path):
+        try: return path.stat().st_size
+        except Exception: return 0
     p = load_preset(name) or {}
     voices = {vn: ts(sd / f"last-{vn}.txt") for vn in (p.get("voices", {}) or {})}
     events = {ev: ts(sd / f"evt-{ev}.txt") for ev in ALL_EVENTS}
+    counts = {ev: csize(sd / f"cnt-{ev}.bin") for ev in ALL_EVENTS}
     return {"now": now, "muted": bool(load_config().get("muted")),
             "active": active_preset_name(),
             "heartbeat": ts(STATE / "heartbeat"),
-            "voices": voices, "events": events,
+            "voices": voices, "events": events, "counts": counts,
             "sessions": sessions_list()}
 
 # ---------- HTTP ----------
@@ -428,6 +432,15 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/test":
                 fire_test(b.get("name"))
                 return self._send(200, {"ok": True})
+            if path == "/api/counts/reset":
+                name = b.get("name", active_preset_name())
+                sd = STATE / name
+                removed = 0
+                if sd.exists():
+                    for f in sd.glob("cnt-*.bin"):
+                        try: f.unlink(); removed += 1
+                        except Exception: pass
+                return self._send(200, {"ok": True, "removed": removed})
             if path == "/api/record/start":
                 if REC_ACTIVE.exists():
                     return self._send(200, {"ok": False, "msg": "already recording"})

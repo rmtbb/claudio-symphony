@@ -725,6 +725,11 @@ def handle(payload):
         _ed = STATE / preset_name
         _ed.mkdir(parents=True, exist_ok=True)
         (_ed / f"evt-{event}.txt").write_text(str(time.time()))
+        # Frequency counter: append one byte so the file SIZE == fire count.
+        # O_APPEND of a single byte is atomic, so concurrent hook processes
+        # never clobber each other (a read-modify-write counts.json would).
+        with (_ed / f"cnt-{event}.bin").open("ab") as _cf:
+            _cf.write(b"\x01")
     except Exception:
         pass
 

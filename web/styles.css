@@ -586,3 +586,16 @@ body.is-muted .muted-banner { display:flex; align-items:center; gap:8px; justify
 .erow .elabel:active { background: rgba(232,178,92,.18); }
 .erow .elabel::after { content:'▸'; font-size:10px; color: var(--faint); opacity:0; transition: opacity .15s; align-self:center; }
 .erow .elabel:hover::after { opacity:.8; color: var(--gold); }
+
+/* event frequency + recency (Events tab) */
+.etools { display:flex; align-items:center; gap:8px; margin:0 0 10px; }
+.etools-note { font:9px/1 var(--mono); letter-spacing:1px; text-transform:uppercase; color: var(--faint); margin-right:auto; }
+.esort, .ereset { font:10px var(--mono); letter-spacing:.5px; color: var(--muted); background:transparent;
+  border:1px solid var(--line-2); border-radius:7px; padding:5px 10px; cursor:pointer; transition:.15s; }
+.esort:hover, .ereset:hover { color: var(--gold-hi); border-color: rgba(232,178,92,.5); }
+.esort.on { color:#1a130a; background: var(--gold); border-color: var(--gold); font-weight:700; }
+.egroup { display:contents; }
+.erow { position: relative; }
+.ecount { font:9px/1 var(--mono); color: var(--faint); margin-left:8px; align-self:center; }
+.efreq { position:absolute; left:12px; right:12px; bottom:1px; height:2px; width:0; border-radius:2px; pointer-events:none;
+  background: linear-gradient(90deg, rgba(232,178,92,.55), rgba(232,178,92,.12)); transition: width .8s ease; }
