@@ -2,18 +2,6 @@
 
 > **Hear your Claude Code sessions.** Every tool call, file edit, and finished thought becomes a soft, in-key sound — ambient music that moves with your AI pair-programmer.
 
-```
-                    ╭─────────────────────────────────────╮
-                    │                                     │
-                    │    every bash command, a low tone   │
-                    │    every tool call is a soft pluck  │
-                    │    every sub-agent finishing,       │
-                    │    a tuned bell from across         │
-                    │    the cathedral                    │
-                    │                                     │
-                    ╰─────────────────────────────────────╯
-```
-
 Claudio listens to Claude Code's hook events and turns them into generative, always-in-key ambient music. Twenty tool calls in three seconds become one soft blur of tones, not twenty separate dings — because that's the difference between music and Slack notifications.
 
 It is **not** a notification system. It's a room your Claude session is happening inside. After about twenty minutes you stop hearing it as *music* and start hearing it as *the room* — and the room moves with your work.
@@ -131,6 +119,19 @@ Prefer buttons? Hit **● Rec** in `claudio web` — pick a length, optionally f
 ---
 
 ## 📦 Install
+
+### Easiest: let Claude Code install it for you
+
+Paste this straight into Claude Code and let it do the work:
+
+```
+Please clone and install Claudio Symphony for me: https://github.com/rmtbb/claudio-symphony
+Clone the repo, run `python3 install.py`, then run `./bin/claudio install` to add the hooks
+to ~/.claude/settings.json. When it's done, tell me to start a new session and switch presets
+with `claudio preset use <name>`.
+```
+
+### Manual
 
 ```bash
 git clone https://github.com/rmtbb/claudio-symphony.git
