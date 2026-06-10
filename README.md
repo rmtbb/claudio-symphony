@@ -127,8 +127,8 @@ Paste this straight into Claude Code and let it do the work:
 ```
 Please clone and install Claudio Symphony for me: https://github.com/rmtbb/claudio-symphony
 Clone the repo, run `python3 install.py`, then run `./bin/claudio install` to add the hooks
-to ~/.claude/settings.json. When it's done, tell me to start a new session and switch presets
-with `claudio preset use <name>`.
+to ~/.claude/settings.json. When it's done, tell me to start a new session, how to switch presets
+with `claudio preset use <name>`, and how to open the web UI with `claudio web`.
 ```
 
 ### Manual
@@ -141,6 +141,8 @@ python3 install.py            # deps + render samples + write starter config
 ```
 
 Open a new Claude Code session and listen. That's it.
+
+> **👉 There's a full UI.** Run **`claudio web`** to open the browser control panel — a live constellation of your voices where you can tune everything, browse and switch all 36 presets, build your own, and record clips. No build step, runs locally on `127.0.0.1`. See [The web control panel](#️-the-web-control-panel).
 
 **Requirements**
 - 🍎 macOS (uses `afplay` — Linux/Windows support is one small patch in `event.py`; PRs welcome)
