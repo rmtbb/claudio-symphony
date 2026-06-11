@@ -22,6 +22,10 @@
         <span class="mark">Claudio<span class="dot">.</span></span>
         <span class="tag">A=432 · ambient console</span>
       </div>
+      <div class="viewswitch" id="viewSwitch">
+        <button class="vsw on" data-view="console" title="Tune your live sessions">🎚 Console</button>
+        <button class="vsw" data-view="jukebox" title="Perform a MIDI through the active preset">🎹 Jukebox</button>
+      </div>
       <div class="nowplaying" id="nowPlaying" title="globally-active preset (default routing)">
         <span class="np-dot"></span><span class="np-lbl">default</span><span class="np-name" id="npName">—</span>
       </div>
@@ -117,6 +121,48 @@
         </div>
       </section>
     </div>
+
+    <!-- jukebox view: perform a MIDI through the active preset -->
+    <section class="jukepage" id="jukePage" hidden>
+      <div class="juke-hero">
+        <div class="juke-hero-txt">
+          <div class="juke-title">🎹 Jukebox</div>
+          <div class="juke-sub">Perform a MIDI file through <b id="jukePreset">—</b>. Each track plays an <em>event's</em> voice — the Events tab &amp; constellation bloom in time, and if you're recording, the whole performance lands in your clip.</div>
+        </div>
+        <button class="juke-exit" id="jukeClose" title="Back to the console">← Console</button>
+      </div>
+      <div class="juke-stage">
+        <div class="juke-left">
+          <div class="juke-field">
+            <label class="juke-lbl">Song</label>
+            <div class="juke-pick">
+              <select class="vsel" id="jukeSong"></select>
+              <label class="juke-import" id="jukeImportLbl" title="Drop in any Standard MIDI File">＋ import .mid
+                <input type="file" id="jukeImport" accept=".mid,.midi" hidden>
+              </label>
+            </div>
+          </div>
+          <div class="juke-transport">
+            <button class="juke-play" id="jukePlay">▶ Play</button>
+            <button class="juke-loop" id="jukeLoop" title="Loop the song">⟳ loop</button>
+          </div>
+          <div class="juke-bar" id="jukeBar"><span id="jukeBarFill"></span><i id="jukeBarHead"></i></div>
+          <div class="juke-time" id="jukeTime">0:00</div>
+          <div class="juke-field">
+            <label class="juke-lbl">Tempo</label>
+            <div class="juke-tempo">
+              <input type="range" class="r" id="jukeTempo" min="0.5" max="2" step="0.05" value="1">
+              <span class="juke-tempo-val" id="jukeTempoVal">1.00×</span>
+            </div>
+          </div>
+          <div class="juke-tip">🎙️ Recording? Hit <b>Rec</b> first, then Play — the whole performance is captured to a clip.</div>
+        </div>
+        <div class="juke-right">
+          <div class="juke-right-h">Track → event → voice <span>each MIDI channel performs one event's sound</span></div>
+          <div class="juke-map" id="jukeMap"></div>
+        </div>
+      </div>
+    </section>
   </div>
 
   <!-- preset browser overlay -->
@@ -204,39 +250,6 @@
         <button class="help-close" id="helpClose">✕</button>
       </header>
       <div class="help-grid" id="helpGrid"></div>
-    </div>
-  </div>
-
-  <!-- jukebox: perform a MIDI file through the preset (easter egg) -->
-  <div class="jukemodal" id="jukeModal" hidden>
-    <div class="juke-panel">
-      <header class="juke-head">
-        <div>
-          <div class="juke-title">🎹 Jukebox <span class="juke-egg">· secret instrument</span></div>
-          <div class="juke-sub">Perform a MIDI file through <b id="jukePreset">—</b>. Each track becomes an <em>event's</em> voice — watch the Events tab &amp; sky bloom in time.</div>
-        </div>
-        <button class="juke-close" id="jukeClose">✕</button>
-      </header>
-      <div class="juke-pick">
-        <select class="vsel" id="jukeSong"></select>
-        <label class="juke-import" id="jukeImportLbl" title="Drop in any Standard MIDI File">＋ import .mid
-          <input type="file" id="jukeImport" accept=".mid,.midi" hidden>
-        </label>
-        <div class="juke-spacer"></div>
-        <div class="juke-tempo">
-          <label>tempo</label>
-          <input type="range" class="r" id="jukeTempo" min="0.5" max="2" step="0.05" value="1">
-          <span class="juke-tempo-val" id="jukeTempoVal">1.00×</span>
-        </div>
-        <button class="juke-loop" id="jukeLoop" title="Loop the song">⟳ loop</button>
-      </div>
-      <div class="juke-map" id="jukeMap"></div>
-      <div class="juke-foot">
-        <button class="juke-play" id="jukePlay">▶ Play</button>
-        <div class="juke-bar" id="jukeBar"><span id="jukeBarFill"></span><i id="jukeBarHead"></i></div>
-        <div class="juke-time" id="jukeTime">0:00</div>
-      </div>
-      <div class="juke-tip">🎙️ Recording? Hit <b>Rec</b> first, then Play — the whole performance is captured to a clip.</div>
     </div>
   </div>
 

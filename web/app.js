@@ -495,8 +495,19 @@ const EVENT_LABELS = {
 const JCOLS = ['#e8b25c', '#8ab6d6', '#8fc0a6', '#e58c66', '#ffd98a', '#c98c34', '#9ec9b0', '#d9b07a', '#b39ddb'];
 let JUKE = { song: null, plan: null, map: {}, tempo: 1, loop: false, evVoice: {}, poll: null, playing: false };
 
-async function openJuke() {
-  $('#jukeModal').hidden = false;
+let VIEW = 'console';
+function setView(view) {
+  VIEW = view;
+  const juke = view === 'jukebox';
+  $('#jukePage').hidden = !juke;
+  document.body.classList.toggle('jukebox-view', juke);
+  $$('.vsw').forEach(b => b.classList.toggle('on', b.dataset.view === view));
+  if (juke) enterJuke(); else exitJuke();
+}
+const openJuke = () => setView('jukebox');     // brand-dot easter egg + Music-tab button
+const closeJuke = () => setView('console');
+
+async function enterJuke() {
   $('#jukePreset').textContent = STATE.active;
   // event → default voice for the active preset (to show what each track will sound like)
   try {
@@ -507,7 +518,7 @@ async function openJuke() {
   const sel = $('#jukeSong');
   if (!songs.length) {
     sel.innerHTML = `<option>— no MIDI yet —</option>`;
-    $('#jukeMap').innerHTML = `<div class="juke-empty">No songs yet. Drop in a <code>.mid</code> with <b>＋ import</b>, or run <code>claudio song import &lt;file.mid&gt;</code>.</div>`;
+    $('#jukeMap').innerHTML = `<div class="juke-empty">No songs yet. Drop a <code>.mid</code> with <b>＋ import</b> above, or run <code>claudio song import &lt;file.mid&gt;</code>.</div>`;
   } else {
     sel.innerHTML = songs.map(s => `<option ${s === JUKE.song ? 'selected' : ''}>${s}</option>`).join('');
     JUKE.song = JUKE.song && songs.includes(JUKE.song) ? JUKE.song : songs[0];
@@ -515,9 +526,9 @@ async function openJuke() {
     await loadJukePlan();
   }
   refreshJukeStatus();
-  JUKE.poll = setInterval(refreshJukeStatus, 300);
+  if (!JUKE.poll) JUKE.poll = setInterval(refreshJukeStatus, 300);
 }
-function closeJuke() { $('#jukeModal').hidden = true; if (JUKE.poll) { clearInterval(JUKE.poll); JUKE.poll = null; } }
+function exitJuke() { if (JUKE.poll) { clearInterval(JUKE.poll); JUKE.poll = null; } }
 
 async function loadJukePlan() {
   if (!JUKE.song) return;
@@ -532,7 +543,7 @@ function renderJukeMap() {
   const evOpts = (ev) => p.events.map(e =>
     `<option value="${e}" ${e === ev ? 'selected' : ''}>${e} · ${EVENT_LABELS[e] || ''}</option>`).join('')
     + `<option value="__none__" ${!ev ? 'selected' : ''}>— silent —</option>`;
-  $('#jukeMap').innerHTML = `<div class="juke-map-h">${p.total_notes} notes · ${Math.round(p.duration)}s · bpm ${Math.round(p.bpm * JUKE.tempo)} <span>each MIDI track → an event → its voice</span></div>` +
+  $('#jukeMap').innerHTML = `<div class="juke-map-h">${p.total_notes} notes · ${Math.round(p.duration)}s · bpm ${Math.round(p.bpm * JUKE.tempo)}</div>` +
     p.channels.map((c, i) => {
       const ev = JUKE.map[c.channel];
       const voice = ev && ev !== '__none__' ? (JUKE.evVoice[ev] || '(silent)') : '(silent)';
@@ -843,7 +854,7 @@ function renderMusic() {
   // Jukebox launcher — perform a whole MIDI through the preset (the fun one)
   const jf = document.createElement('div'); jf.className = 'field';
   jf.innerHTML = `<div class="flab">🎹 Jukebox<small>perform a MIDI live — each track plays an event's voice</small></div>
-    <div class="fctl"><button class="btn juke-open" id="jukeOpen">▶ Open jukebox</button></div>`;
+    <div class="fctl"><button class="btn juke-open" id="jukeOpen">Open Jukebox →</button></div>`;
   jf.querySelector('#jukeOpen').onclick = openJuke;
   rw.appendChild(jf);
 }
@@ -920,10 +931,10 @@ function wireGlobal() {
   $('#helpBtn').onclick = openHelp;
   $('#helpClose').onclick = closeHelp;
   $('#helpModal').onclick = (e) => { if (e.target.id === 'helpModal') closeHelp(); };
-  // jukebox (easter egg): the brand dot opens it; so does the Music-tab button
+  // view switch: Console ⇄ Jukebox (top bar). The brand dot is a fun shortcut to Jukebox.
+  $$('.vsw').forEach(b => b.onclick = () => setView(b.dataset.view));
   $('.brand .dot').onclick = openJuke;
   $('#jukeClose').onclick = closeJuke;
-  $('#jukeModal').onclick = (e) => { if (e.target.id === 'jukeModal') closeJuke(); };
   $('#jukeSong').onchange = e => { JUKE.song = e.target.value; loadJukePlan(); };
   $('#jukeTempo').oninput = e => { JUKE.tempo = +e.target.value; $('#jukeTempoVal').textContent = (+e.target.value).toFixed(2) + '×'; if (JUKE.plan) renderJukeMap(); };
   $('#jukeLoop').onclick = e => { JUKE.loop = !JUKE.loop; e.currentTarget.classList.toggle('on', JUKE.loop); };
@@ -935,8 +946,8 @@ function wireGlobal() {
     else if (!$('#browser').hidden) closeBrowser();
     else if (!$('#tipModal').hidden) closeTip();
     else if (!$('#recModal').hidden) closeRec();
-    else if (!$('#jukeModal').hidden) closeJuke();
     else if (!$('#helpModal').hidden) closeHelp();
+    else if (VIEW === 'jukebox') closeJuke();
   });
   const m = $('#master');
   m.oninput = () => { $('#masterVal').textContent = fmt(m.value,2); setFill(m); };
