@@ -21,6 +21,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import song as song_mod  # noqa: E402  (sibling module, must come after sys.path)
 import audio  # noqa: E402  (cross-platform playback backend; same path insert)
+import timeline as timeline_mod  # noqa: E402  (owns the timeline dir + safe_sid; reader must match this writer)
 PRESETS = HERE / "presets"
 STATE = HERE / "state"
 LOGS = HERE / "logs"
@@ -28,7 +29,7 @@ CONFIG = HERE / "config.json"
 SESSIONS_FILE = STATE / "sessions.json"
 RULES_FILE = STATE / "rules.json"
 LOG = LOGS / "event.log"
-TIMELINE = STATE / "timeline"                        # always-on per-session event scores
+TIMELINE = timeline_mod.TIMELINE                      # shared with timeline.py so writer/reader can't drift
 TIMELINE_MAX_EVENTS = 20000                          # cap a marathon session's file growth
 STATE.mkdir(exist_ok=True); LOGS.mkdir(exist_ok=True)
 
@@ -44,16 +45,12 @@ def log(msg):
 
 # ---------- session timeline capture (symbolic; audio capture lives in audio.py) ----------
 
-def _safe_sid(s):
-    """session_id → filesystem-safe stem (UUIDs are already safe; be defensive)."""
-    return "".join(c for c in (s or "") if c.isalnum() or c in "-_")[:64]
-
 def _timeline_log(session, event, tool, fail):
     """Always-on: append one compact line per handled event to this session's
     score. This is the cheap symbolic timeline (no audio) that powers replay,
     the heavy-traffic sparkline, and shareable .score.json exports. One atomic
     O_APPEND of a sub-PIPE_BUF line, so concurrent hook processes never clobber."""
-    sid = _safe_sid(session)
+    sid = timeline_mod.safe_sid(session)
     if not sid:
         return
     try:
@@ -198,7 +195,7 @@ def update_session_record(session_id, cwd, event_name, resolved_preset, source):
     for sid in list(active.keys()):
         if active[sid].get("last_seen", 0) < cutoff and sid != session_id:
             del active[sid]
-            try: (TIMELINE / f"{_safe_sid(sid)}.ndjson").unlink()   # drop its score too
+            try: (TIMELINE / f"{timeline_mod.safe_sid(sid)}.ndjson").unlink()   # drop its score too
             except Exception: pass
     rec = active.setdefault(session_id, {})
     now = time.time()

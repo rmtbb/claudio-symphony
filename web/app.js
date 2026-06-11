@@ -429,17 +429,25 @@ function renderRecList(s) {
   if (recSeen >= 0 && recs.length > recSeen && !s.active) toast('✅ clip saved — scroll down to play or download');
   recSeen = recs.length;
   if (!recs.length) { list.innerHTML = '<div class="rec-empty">No clips yet. Your recordings will show here.</div>'; return; }
-  // prefer one row per take: pair .m4a/.wav by basename, show smaller as the player
+  const scores = recs.filter(r => r.kind === 'score');
+  // audio clips: one row per take, pair .m4a/.wav by basename
   const byBase = {};
-  recs.forEach(r => { const base = r.name.replace(/\.(wav|m4a)$/, ''); (byBase[base] ||= []).push(r); });
-  list.innerHTML = '<div class="rec-list-h">Your clips</div>' + Object.entries(byBase).map(([base, items]) => {
+  recs.filter(r => r.kind !== 'score').forEach(r => { const base = r.name.replace(/\.(wav|m4a)$/, ''); (byBase[base] ||= []).push(r); });
+  let html = Object.keys(byBase).length ? '<div class="rec-list-h">Your clips</div>' + Object.entries(byBase).map(([base, items]) => {
     const m4a = items.find(i => i.name.endsWith('.m4a')); const wav = items.find(i => i.name.endsWith('.wav'));
     const play = m4a || wav;
     const dls = items.map(i => `<a class="rec-dl" href="${i.url}" download>${i.name.endsWith('.m4a') ? 'm4a' : 'wav'} ↓</a>`).join('');
     return `<div class="rec-row"><div class="rec-name">${base}</div>
-      <audio class="rec-audio" controls preload="none" src="${play.url}"></audio>
+      ${play ? `<audio class="rec-audio" controls preload="none" src="${play.url}"></audio>` : ''}
       <div class="rec-dls">${dls}</div></div>`;
-  }).join('');
+  }).join('') : '';
+  // session-score exports: tiny, replay-anywhere — download only (not audio)
+  if (scores.length) {
+    html += '<div class="rec-list-h">Session scores <span class="rec-list-note">tiny · replay anywhere</span></div>' +
+      scores.map(r => `<div class="rec-row"><div class="rec-name">🎬 ${r.name.replace(/\.score\.json$/, '')}</div>
+        <div class="rec-dls"><a class="rec-dl" href="${r.url}" download>score.json ↓ (${Math.max(1, Math.round(r.size / 1024))} KB)</a></div></div>`).join('');
+  }
+  list.innerHTML = html;
 }
 /* ---------------- help: what can I do here? ---------------- */
 const HELP_ICONS = ['🎛️', '🧭', '🎵', '🎬', '🎹', '🎙️'];

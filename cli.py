@@ -913,7 +913,18 @@ def _channel_label(song, name):
 
 def _timeline_ids():
     d = timeline_mod.TIMELINE
-    return sorted((p.stem for p in d.glob("*.ndjson")), key=lambda s: (timeline_mod.TIMELINE / f"{s}.ndjson").stat().st_mtime, reverse=True) if d.exists() else []
+    if not d.exists():
+        return []
+    # snapshot (stem, mtime) defensively — event.py prunes idle-session files on
+    # every hook, so a file can vanish between glob and stat.
+    pairs = []
+    for p in d.glob("*.ndjson"):
+        try:
+            pairs.append((p.stem, p.stat().st_mtime))
+        except OSError:
+            pass
+    pairs.sort(key=lambda t: t[1], reverse=True)
+    return [s for s, _ in pairs]
 
 
 def cmd_replay(args):
@@ -968,7 +979,7 @@ def cmd_replay(args):
     if render:
         secs = max(1, min(300, int(dur) + 2))
         (STATE / "recording").mkdir(parents=True, exist_ok=True)
-        audio.spawn_python("record.py", ["run", str(secs)], detached=True)  # portable detached launch
+        audio.spawn_python(str(HERE / "record.py"), ["run", str(secs)], detached=True)  # absolute: claudio runs from any cwd
         print(f"  ● rendering to a WAV in recordings/ ({secs}s)")
         time.sleep(0.3)
     print("  (Ctrl-C to stop)\n")

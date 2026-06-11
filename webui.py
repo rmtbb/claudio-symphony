@@ -472,9 +472,11 @@ def record_status():
     out = {"active": False, "recordings": [], "max": 300, "default": 30}
     if OUT_DIR.exists():
         for p in sorted(OUT_DIR.glob("*"), reverse=True):
-            if p.suffix in (".wav", ".m4a"):
+            kind = "audio" if p.suffix in (".wav", ".m4a") else \
+                   "score" if p.name.endswith(".score.json") else None
+            if kind:
                 out["recordings"].append({
-                    "name": p.name, "size": p.stat().st_size,
+                    "name": p.name, "size": p.stat().st_size, "kind": kind,
                     "url": "/recordings/" + urllib.parse.quote(p.name)})
     try:
         if REC_ACTIVE.exists():
@@ -894,7 +896,13 @@ class Handler(BaseHTTPRequestHandler):
                 rargs = ["run", str(secs)] + (["--drone"] if b.get("drone") else [])
                 audio.spawn_python(RECORD_PY, rargs, detached=True)
                 rendered = True
-                time.sleep(0.25)                          # let the window open first
+                # wait until the recorder has actually opened its window (active.json)
+                # before starting the replay, so the opening notes aren't dropped.
+                # Bounded (~2s) so a failed recorder can't hang the request.
+                for _ in range(40):
+                    if REC_ACTIVE.exists():
+                        break
+                    time.sleep(0.05)
         rargs = ["replay", sid, "--preset", str(preset),
                  "--tempo", f"{tempo:.3f}", "--max-gap", f"{max_gap:.2f}"]
         if loop:
@@ -918,7 +926,9 @@ class Handler(BaseHTTPRequestHandler):
         if not raw or raw[:4] != b"MThd":
             return self._send(200, {"ok": False, "msg": "not a Standard MIDI File"})
         name = b.get("name") or "song"
-        tmp = Path(tempfile.gettempdir()) / "claudio_upload.mid"
+        fd, tmpname = tempfile.mkstemp(suffix=".mid")    # unique per request — no concurrent clobber
+        os.close(fd)
+        tmp = Path(tmpname)
         try:
             tmp.write_bytes(raw)
             sname, parsed = song_mod.import_midi_file(tmp, name)

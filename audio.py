@@ -660,8 +660,13 @@ def _stop(tag: Optional[str]) -> None:
     except Exception:
         pass
     # 3) image-name sweep for OUR dedicated player binary (belt & suspenders).
-    #    Never image-kill shared/generic names (sox `play`, `powershell`) or
-    #    winsound — that could nuke unrelated processes.
+    #    ONLY on stop_all (tag is None). A tagged stop (e.g. stop_drone) already
+    #    killed its tracked PIDs in step 2; a broad image/winsound sweep here would
+    #    also cut unrelated in-flight plays (notes still ringing) — the old
+    #    `pkill -f 'afplay .*drone.wav'` was drone-specific, so this preserves that.
+    #    Never image-kill shared/generic names (sox `play`, `powershell`).
+    if tag is not None:
+        return
     if be.kind == "winsound":
         if winsound is not None:
             try:
