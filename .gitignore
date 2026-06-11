@@ -39,3 +39,6 @@ graphify-out/
 
 # Test fixtures (generated)
 tests/_fixture_*.wav
+
+# Local-only growth/strategy working doc
+GROWTH.md
