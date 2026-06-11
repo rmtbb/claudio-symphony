@@ -28,6 +28,8 @@ RULES_FILE = STATE / "rules.json"
 LOG = LOGS / "event.log"
 REC_ACTIVE = STATE / "recording" / "active.json"     # presence = recording window open
 REC_EVENTS = STATE / "recording" / "events.jsonl"    # one line per sound played
+TIMELINE = STATE / "timeline"                        # always-on per-session event scores
+TIMELINE_MAX_EVENTS = 20000                          # cap a marathon session's file growth
 STATE.mkdir(exist_ok=True); LOGS.mkdir(exist_ok=True)
 
 DEFAULT_PRESET = "meadow"
@@ -52,6 +54,34 @@ def _rec_window():
         return (float(m["start"]), float(m["duration"]))
     except Exception:
         return None
+
+def _safe_sid(s):
+    """session_id → filesystem-safe stem (UUIDs are already safe; be defensive)."""
+    return "".join(c for c in (s or "") if c.isalnum() or c in "-_")[:64]
+
+def _timeline_log(session, event, tool, fail):
+    """Always-on: append one compact line per handled event to this session's
+    score. This is the cheap symbolic timeline (no audio) that powers replay,
+    the heavy-traffic sparkline, and shareable .score.json exports. One atomic
+    O_APPEND of a sub-PIPE_BUF line, so concurrent hook processes never clobber."""
+    sid = _safe_sid(session)
+    if not sid:
+        return
+    try:
+        TIMELINE.mkdir(parents=True, exist_ok=True)
+        f = TIMELINE / f"{sid}.ndjson"
+        try:
+            if f.exists() and f.stat().st_size > TIMELINE_MAX_EVENTS * 48:
+                return            # marathon session — stop growing the file
+        except Exception:
+            pass
+        rec = {"t": round(time.time(), 3), "e": event}
+        if tool: rec["tool"] = tool
+        if fail: rec["f"] = 1
+        with f.open("a") as fh:
+            fh.write(json.dumps(rec) + "\n")
+    except Exception:
+        pass
 
 def _rec_log(sample_path, gain_v, rate, t_play):
     """Append one sound to the recording timeline. O_APPEND keeps concurrent
@@ -190,6 +220,8 @@ def update_session_record(session_id, cwd, event_name, resolved_preset, source):
     for sid in list(active.keys()):
         if active[sid].get("last_seen", 0) < cutoff and sid != session_id:
             del active[sid]
+            try: (TIMELINE / f"{_safe_sid(sid)}.ndjson").unlink()   # drop its score too
+            except Exception: pass
     rec = active.setdefault(session_id, {})
     now = time.time()
     rec.setdefault("first_seen", now)
@@ -732,6 +764,12 @@ def handle(payload):
             _cf.write(b"\x01")
     except Exception:
         pass
+
+    # Always-on session score: a compact symbolic timeline of this session, so
+    # you can replay your whole workflow through any preset, spot the heavy
+    # traffic, and share a few-KB file instead of a WAV. (Audio capture for the
+    # WAV path stays separate, in play() → events.jsonl.)
+    _timeline_log(session, event, tool, is_failure(payload))
 
     # Per-preset quant override: preset.json may carry a "quant" block that
     # overrides the global config.json quant settings on a per-preset basis,

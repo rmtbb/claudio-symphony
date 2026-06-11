@@ -27,6 +27,7 @@
       </div>
       <div class="spacer"></div>
       <button class="browse-btn" id="browseBtn">⊞ Browse presets</button>
+      <button class="help-btn" id="helpBtn" title="What can I do here?">?</button>
       <button class="rec-btn" id="recBtn" title="Record a clip of your session to share"><span class="rec-dot"></span><span id="recBtnLbl">Rec</span></button>
       <button class="tip-btn" id="tipBtn" title="Support Claudio — buy me a coffee">☕ Tip</button>
       <div class="pulse" id="pulse"><span class="ring"></span><span id="pulseTxt">idle</span></div>
@@ -189,6 +190,53 @@
       </header>
       <div class="rec-body" id="recBody"></div>
       <div class="rec-list" id="recList"></div>
+    </div>
+  </div>
+
+  <!-- help: what can I do here? -->
+  <div class="helpmodal" id="helpModal" hidden>
+    <div class="help-panel">
+      <header class="help-head">
+        <div>
+          <div class="help-title" id="helpTitle">What can I do here?</div>
+          <div class="help-sub">Everything Claudio can do — and the matching <code>claudio</code> CLI lives in <code>claudio --help</code>.</div>
+        </div>
+        <button class="help-close" id="helpClose">✕</button>
+      </header>
+      <div class="help-grid" id="helpGrid"></div>
+    </div>
+  </div>
+
+  <!-- jukebox: perform a MIDI file through the preset (easter egg) -->
+  <div class="jukemodal" id="jukeModal" hidden>
+    <div class="juke-panel">
+      <header class="juke-head">
+        <div>
+          <div class="juke-title">🎹 Jukebox <span class="juke-egg">· secret instrument</span></div>
+          <div class="juke-sub">Perform a MIDI file through <b id="jukePreset">—</b>. Each track becomes an <em>event's</em> voice — watch the Events tab &amp; sky bloom in time.</div>
+        </div>
+        <button class="juke-close" id="jukeClose">✕</button>
+      </header>
+      <div class="juke-pick">
+        <select class="vsel" id="jukeSong"></select>
+        <label class="juke-import" id="jukeImportLbl" title="Drop in any Standard MIDI File">＋ import .mid
+          <input type="file" id="jukeImport" accept=".mid,.midi" hidden>
+        </label>
+        <div class="juke-spacer"></div>
+        <div class="juke-tempo">
+          <label>tempo</label>
+          <input type="range" class="r" id="jukeTempo" min="0.5" max="2" step="0.05" value="1">
+          <span class="juke-tempo-val" id="jukeTempoVal">1.00×</span>
+        </div>
+        <button class="juke-loop" id="jukeLoop" title="Loop the song">⟳ loop</button>
+      </div>
+      <div class="juke-map" id="jukeMap"></div>
+      <div class="juke-foot">
+        <button class="juke-play" id="jukePlay">▶ Play</button>
+        <div class="juke-bar" id="jukeBar"><span id="jukeBarFill"></span><i id="jukeBarHead"></i></div>
+        <div class="juke-time" id="jukeTime">0:00</div>
+      </div>
+      <div class="juke-tip">🎙️ Recording? Hit <b>Rec</b> first, then Play — the whole performance is captured to a clip.</div>
     </div>
   </div>
 

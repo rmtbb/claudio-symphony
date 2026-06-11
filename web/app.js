@@ -11,6 +11,7 @@ let STATE = null, DETAIL = null;
 let FOCUS = { kind: 'global' };        // {kind:'global'} | {kind:'session', id, s}
 let lastVoiceTs = {}, lastEventTs = {};
 let EVT_COUNTS = {}, SORT_BY_FREQ = false;   // event fire-frequency + opt-in "most fired" sort
+let TIMELINES = {}, REPLAY = { active: false };   // per-session mini-tracks + live replay state
 const cssEsc = (s) => (window.CSS && CSS.escape) ? CSS.escape(s) : s;
 
 const toast = (() => { const el = $('#toast'); let t;
@@ -68,12 +69,60 @@ function renderRail() {
     const badges = [s.pinned && `<span class="ov pin">📌</span>`, s.scale && `<span class="ov">♪</span>`, s.song && `<span class="ov">🎹</span>`].filter(Boolean).join('');
     const el = document.createElement('div');
     el.className = 'srail-item' + (recent ? ' recent' : '') + (focused ? ' focused' : '');
+    el.dataset.session = s.id;
     el.innerHTML = `<div class="si-top"><span class="si-dot"></span><span class="si-name" title="${s.cwd || s.id}">${s.base}</span><span class="si-age">${ageLabel(s.age)}</span></div>
       <div class="si-preset">${s.preset || '—'} <span class="via">via ${s.source}</span></div>
-      ${badges ? `<div class="si-badges">${badges}</div>` : ''}`;
+      ${badges ? `<div class="si-badges">${badges}</div>` : ''}
+      ${railTrackHTML(s)}`;
     el.onclick = () => setFocus({ kind: 'session', id: s.id, s });
+    const rb = el.querySelector('.si-replay');
+    if (rb) rb.onclick = (e) => { e.stopPropagation(); toggleReplay(s); };
     wrap.appendChild(el);
   });
+  paintReplay();
+}
+
+/* per-session "mini-track": heavy-traffic sparkline + replay button */
+function railTrackHTML(s) {
+  const t = TIMELINES[s.id];
+  if (!t || !t.count) return '';
+  const peak = t.peak || 1;
+  const bars = t.density.map(v => `<i style="height:${Math.max(8, Math.round(v / peak * 100))}%;opacity:${(0.3 + 0.7 * v / peak).toFixed(2)}"></i>`).join('');
+  return `<div class="si-track" title="${t.count} events over ${Math.round(t.duration)}s — click ▶ to replay this session">
+      <button class="si-replay" data-id="${s.id}" title="Replay this session through ${s.preset || 'the preset'}">▶</button>
+      <div class="si-spark">${bars}<span class="si-head" hidden></span></div>
+      <span class="si-evts">${t.count}</span>
+    </div>`;
+}
+function toggleReplay(s) {
+  if (REPLAY.active && REPLAY.session === s.id) { api.post('/api/score/stop', {}); toast('replay stopped'); }
+  else { api.post('/api/score/replay', { id: s.id, preset: s.preset || STATE.active }); toast(`▶ replaying <span class="g">${s.base}</span> through ${s.preset || STATE.active}`); }
+}
+/* live: reflect replay state on the rail (button + playhead) without re-rendering */
+function paintReplay() {
+  const active = REPLAY.active, sid = REPLAY.session;
+  $$('.srail-item').forEach(el => {
+    const id = el.dataset.session;
+    const btn = el.querySelector('.si-replay'); if (!btn) return;
+    const me = active && id === sid;
+    btn.textContent = me ? '■' : '▶';
+    btn.classList.toggle('on', me);
+    el.classList.toggle('replaying', me);
+    const head = el.querySelector('.si-head');
+    if (head) {
+      if (me && REPLAY.progress && REPLAY.progress.total) {
+        head.hidden = false;
+        head.style.left = Math.max(0, Math.min(100, 100 * (REPLAY.progress.idx || 0) / REPLAY.progress.total)) + '%';
+      } else head.hidden = true;
+    }
+  });
+  // keep the focused-session strip button in sync too
+  const mb = $('#mtReplay');
+  if (mb && FOCUS.kind === 'session') {
+    const me = active && FOCUS.id === sid;
+    mb.textContent = me ? '■ stop' : '▶ replay';
+    mb.classList.toggle('on', me);
+  }
 }
 
 function setFocus(focus) {
@@ -141,6 +190,22 @@ function renderSessionStrip() {
       un.innerHTML = `<label>&nbsp;</label><button class="btn ghost sm" id="ssUnpin">📌 unpin</button>`;
       un.querySelector('#ssUnpin').onclick = async () => { await api.post('/api/session/pin', { id: s.id, preset: '__none__' }); s.pinned = null; toast(`${s.base} follows rules`); renderRail(); renderSessionStrip(); };
       strip.appendChild(un);
+    }
+    // mini-track: replay / render-to-WAV / export this session's timeline
+    const t = TIMELINES[s.id];
+    if (t && t.count) {
+      const mt = document.createElement('div'); mt.className = 'ss-field';
+      const playing = REPLAY.active && REPLAY.session === s.id;
+      mt.innerHTML = `<label>mini-track <span style="color:var(--faint)">${t.count} ev</span></label>
+        <div class="ss-track">
+          <button class="ss-trk-btn${playing ? ' on' : ''}" id="mtReplay">${playing ? '■ stop' : '▶ replay'}</button>
+          <button class="ss-trk-btn" id="mtRender" title="Replay into a recording → a shareable WAV">● render WAV</button>
+          <button class="ss-trk-btn" id="mtExport" title="Save a tiny .score.json you can share + replay anywhere">⤓ score</button>
+        </div>`;
+      mt.querySelector('#mtReplay').onclick = () => toggleReplay(s);
+      mt.querySelector('#mtRender').onclick = () => { api.post('/api/score/replay', { id: s.id, preset: s.preset || STATE.active, render: true }); toast(`● rendering <span class="g">${s.base}</span> → recordings/`); };
+      mt.querySelector('#mtExport').onclick = async () => { const r = await api.post('/api/score/export', { id: s.id, label: s.base }); toast(r && r.ok ? `⤓ saved <span class="g">${r.name}.score.json</span>` : 'export failed'); };
+      strip.appendChild(mt);
     }
   }
 }
@@ -376,6 +441,183 @@ function renderRecList(s) {
       <div class="rec-dls">${dls}</div></div>`;
   }).join('');
 }
+/* ---------------- help: what can I do here? ---------------- */
+const HELP_ICONS = ['🎛️', '🧭', '🎵', '🎬', '🎹', '🎙️'];
+const WEB_HELP = [
+  { heading: 'Presets & sound', items: [
+    'Browse 36+ presets, audition any, and set one as the global default.',
+    'Constellation view: each orbiting orb is a voice — click it to hear it.',
+    'Mix tab: per-voice gain, reverb, rate jitter, min-interval, and echo mode.',
+    "Swap any voice's samples for a sound from any other preset.",
+    'Build your own preset from sounds across all presets (Browse → Build).'] },
+  { heading: 'Routing — who plays where', items: [
+    'Left rail lists live Claude sessions; click one to focus and edit it.',
+    'Pin a preset, scale, or MIDI song to just one session; Unpin to release.',
+    'Rules tab: path globs auto-select a preset when the cwd matches.',
+    'Global-default pseudo-session plays when no pin or rule matches.'] },
+  { heading: 'Events & music', items: [
+    'Events tab: map each of the 9 hook events to a voice, with by-tool and on-failure overrides.',
+    'Sort events by fire frequency and reset counters.',
+    'Music tab: pick a global scale and a MIDI song to drive melodies (off = Markov).',
+    'Quantize: toggle beat-snap, set BPM and grid (16th/8th/quarter/half).'] },
+  { heading: 'Session replay & mini-tracks', items: [
+    'Each session shows a sparkline of its event-fire history (heavy-traffic spots).',
+    "Play the mini-track to replay that session's timeline through any preset.",
+    'Render the replay to a shareable .wav.',
+    'Export the timeline as a tiny .score.json to replay elsewhere.'] },
+  { heading: 'Jukebox (secret instrument)', items: [
+    'Click the gold dot in the logo, or the Music-tab Jukebox button, to open it.',
+    'Pick or import a MIDI; each channel maps to an event → voice.',
+    'Adjust tempo (0.5×–2×) and loop; watch channels pulse as they fire.',
+    'Tip: start Rec first, then Play, to capture the whole performance.'] },
+  { heading: 'Record & tune', items: [
+    'Rec: capture a 15s–5m clip (optional drone bed); clips download as .m4a + .wav.',
+    'Preset tab: master/drone gain, reverb space (hall size), test events, regenerate, reset.',
+    'Top bar: master volume slider and a global power toggle (mute/unmute).',
+    'Tip button opens crypto donation addresses with QR codes.'] },
+];
+function openHelp() {
+  $('#helpGrid').innerHTML = WEB_HELP.map((s, i) => `
+    <div class="help-card">
+      <div class="help-card-h"><span class="help-ico">${HELP_ICONS[i] || '•'}</span>${s.heading}</div>
+      <ul>${s.items.map(it => `<li>${it}</li>`).join('')}</ul>
+    </div>`).join('');
+  $('#helpModal').hidden = false;
+}
+function closeHelp() { $('#helpModal').hidden = true; }
+
+/* ---------------- jukebox: perform a MIDI through the preset (easter egg) ---------------- */
+const EVENT_LABELS = {
+  PostToolUse: 'after a tool', Stop: 'turn ends', PreToolUse: 'before a tool',
+  UserPromptSubmit: 'you prompt', Notification: 'notification', SubagentStop: 'subagent ends',
+  SessionStart: 'session start', SessionEnd: 'session end', PreCompact: 'compaction',
+};
+const JCOLS = ['#e8b25c', '#8ab6d6', '#8fc0a6', '#e58c66', '#ffd98a', '#c98c34', '#9ec9b0', '#d9b07a', '#b39ddb'];
+let JUKE = { song: null, plan: null, map: {}, tempo: 1, loop: false, evVoice: {}, poll: null, playing: false };
+
+async function openJuke() {
+  $('#jukeModal').hidden = false;
+  $('#jukePreset').textContent = STATE.active;
+  // event → default voice for the active preset (to show what each track will sound like)
+  try {
+    const d = await api.get('/api/preset?name=' + encodeURIComponent(STATE.active));
+    JUKE.evVoice = {}; (d.events || []).forEach(e => { JUKE.evVoice[e.event] = e.default; });
+  } catch { JUKE.evVoice = {}; }
+  const songs = (STATE.music && STATE.music.songs) || [];
+  const sel = $('#jukeSong');
+  if (!songs.length) {
+    sel.innerHTML = `<option>— no MIDI yet —</option>`;
+    $('#jukeMap').innerHTML = `<div class="juke-empty">No songs yet. Drop in a <code>.mid</code> with <b>＋ import</b>, or run <code>claudio song import &lt;file.mid&gt;</code>.</div>`;
+  } else {
+    sel.innerHTML = songs.map(s => `<option ${s === JUKE.song ? 'selected' : ''}>${s}</option>`).join('');
+    JUKE.song = JUKE.song && songs.includes(JUKE.song) ? JUKE.song : songs[0];
+    sel.value = JUKE.song;
+    await loadJukePlan();
+  }
+  refreshJukeStatus();
+  JUKE.poll = setInterval(refreshJukeStatus, 300);
+}
+function closeJuke() { $('#jukeModal').hidden = true; if (JUKE.poll) { clearInterval(JUKE.poll); JUKE.poll = null; } }
+
+async function loadJukePlan() {
+  if (!JUKE.song) return;
+  let p; try { p = await api.get(`/api/midiplay/plan?song=${encodeURIComponent(JUKE.song)}&preset=${encodeURIComponent(STATE.active)}`); } catch { return; }
+  if (!p || p.error) { $('#jukeMap').innerHTML = `<div class="juke-empty">Couldn't read that song.</div>`; return; }
+  JUKE.plan = p; JUKE.map = {};
+  p.channels.forEach(c => { JUKE.map[c.channel] = c.event; });
+  renderJukeMap();
+}
+function renderJukeMap() {
+  const p = JUKE.plan; if (!p) return;
+  const evOpts = (ev) => p.events.map(e =>
+    `<option value="${e}" ${e === ev ? 'selected' : ''}>${e} · ${EVENT_LABELS[e] || ''}</option>`).join('')
+    + `<option value="__none__" ${!ev ? 'selected' : ''}>— silent —</option>`;
+  $('#jukeMap').innerHTML = `<div class="juke-map-h">${p.total_notes} notes · ${Math.round(p.duration)}s · bpm ${Math.round(p.bpm * JUKE.tempo)} <span>each MIDI track → an event → its voice</span></div>` +
+    p.channels.map((c, i) => {
+      const ev = JUKE.map[c.channel];
+      const voice = ev && ev !== '__none__' ? (JUKE.evVoice[ev] || '(silent)') : '(silent)';
+      const col = JCOLS[i % JCOLS.length];
+      return `<div class="juke-row" data-ch="${c.channel}" data-event="${ev || ''}">
+        <span class="juke-ch-dot" style="--jc:${col}"></span>
+        <span class="juke-ch">ch${c.channel}${c.is_lead ? ' <em>◆lead</em>' : ''}</span>
+        <span class="juke-reg">${c.register} · ${c.notes}n</span>
+        <span class="juke-arrow">→</span>
+        <select class="vsel juke-ev" data-ch="${c.channel}">${evOpts(ev)}</select>
+        <span class="juke-voice">♪ <b>${voice}</b></span>
+      </div>`;
+    }).join('');
+  $$('.juke-ev', $('#jukeMap')).forEach(s => s.onchange = e => {
+    const ch = +e.target.dataset.ch, val = e.target.value;
+    JUKE.map[ch] = val === '__none__' ? null : val;
+    renderJukeMap();   // refresh the voice label
+  });
+}
+function jukeMapPayload() {
+  // send EVERY channel — silent ones as "__none__" so they override the auto-map
+  const out = {}; Object.entries(JUKE.map).forEach(([ch, ev]) => { out[ch] = ev || '__none__'; });
+  return out;
+}
+async function jukePlay() {
+  if (!JUKE.song) { toast('import a MIDI first'); return; }
+  const r = await api.post('/api/midiplay/start', { song: JUKE.song, preset: STATE.active, tempo: JUKE.tempo, loop: JUKE.loop, mapping: jukeMapPayload() });
+  if (r && r.ok) { toast(`🎹 performing <span class="g">${JUKE.song}</span>`); setTimeout(refreshJukeStatus, 250); }
+  else toast((r && r.msg) || 'could not start');
+}
+async function jukeStop() { await api.post('/api/midiplay/stop', {}); setTimeout(refreshJukeStatus, 200); }
+
+async function refreshJukeStatus() {
+  let s; try { s = await api.get('/api/midiplay/status'); } catch { return; }
+  const playing = !!s.active;
+  JUKE.playing = playing;
+  const btn = $('#jukePlay');
+  btn.classList.toggle('on', playing);
+  btn.textContent = playing ? '■ Stop' : '▶ Play';
+  btn.onclick = playing ? jukeStop : jukePlay;
+  // playhead
+  const prog = s.progress || {};
+  const total = s.total_notes || (JUKE.plan && JUKE.plan.total_notes) || 1;
+  const pct = playing && prog.total ? Math.max(0, Math.min(100, 100 * (prog.idx || 0) / prog.total)) : 0;
+  $('#jukeBarFill').style.width = pct + '%';
+  $('#jukeBarHead').style.left = pct + '%';
+  $('#jukeBarHead').style.opacity = playing ? 1 : 0;
+  const dur = s.duration || (JUKE.plan && JUKE.plan.duration) || 0;
+  const el = playing ? (prog.elapsed || 0) : 0;
+  $('#jukeTime').textContent = `${mmss(el)} / ${mmss(dur)}`;
+  // pulse the row whose event most recently fired (read the same markers the sky uses)
+  if (playing && JUKE.plan) {
+    try {
+      const a = await api.get('/api/activity?name=' + encodeURIComponent(STATE.active));
+      $$('.juke-row').forEach(row => {
+        const ev = row.dataset.event; const ts = ev && a.events ? a.events[ev] : 0;
+        const age = ts ? a.now - ts : 1e9;
+        row.classList.toggle('lit', age < 0.5);
+        row.style.setProperty('--lit', age < 1.2 ? (1 - age / 1.2).toFixed(2) : 0);
+      });
+    } catch { }
+  } else {
+    $$('.juke-row').forEach(row => { row.classList.remove('lit'); row.style.setProperty('--lit', 0); });
+  }
+}
+function mmss(s) { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+
+function jukeImportFile(file) {
+  if (!file) return;
+  const rd = new FileReader();
+  rd.onload = async () => {
+    const name = file.name.replace(/\.(mid|midi)$/i, '');
+    const r = await api.post('/api/song/import', { name, b64: rd.result });
+    if (r && r.ok) {
+      toast(`imported <span class="g">${r.name}</span> · ${r.notes} notes`);
+      const s = await api.get('/api/state'); STATE.music = s.music;     // refresh song list
+      JUKE.song = r.name;
+      const sel = $('#jukeSong');
+      sel.innerHTML = (STATE.music.songs || []).map(x => `<option ${x === r.name ? 'selected' : ''}>${x}</option>`).join('');
+      await loadJukePlan();
+    } else toast((r && r.msg) || 'import failed');
+  };
+  rd.readAsDataURL(file);
+}
+
 function renderTip() {
   const grid = $('#tipGrid'); grid.innerHTML = '';
   (DONATE.methods || []).forEach(m => {
@@ -597,6 +839,13 @@ function renderMusic() {
     sf.querySelector('#songSel').onchange = e => api.post('/api/song', { name: e.target.value === '__none__' ? null : e.target.value });
   } else sf.innerHTML = `<div class="flab">MIDI song<small>no songs imported — <code>claudio song import</code></small></div>`;
   rw.appendChild(sf);
+
+  // Jukebox launcher — perform a whole MIDI through the preset (the fun one)
+  const jf = document.createElement('div'); jf.className = 'field';
+  jf.innerHTML = `<div class="flab">🎹 Jukebox<small>perform a MIDI live — each track plays an event's voice</small></div>
+    <div class="fctl"><button class="btn juke-open" id="jukeOpen">▶ Open jukebox</button></div>`;
+  jf.querySelector('#jukeOpen').onclick = openJuke;
+  rw.appendChild(jf);
 }
 
 /* ---------------- preset actions ---------------- */
@@ -668,6 +917,17 @@ function wireGlobal() {
   $('#swapClose').onclick = closeSwap;
   $('#swap').onclick = (e) => { if (e.target.id === 'swap') closeSwap(); };
   $('#swapSearch').oninput = e => renderSwapPalette(e.target.value);
+  $('#helpBtn').onclick = openHelp;
+  $('#helpClose').onclick = closeHelp;
+  $('#helpModal').onclick = (e) => { if (e.target.id === 'helpModal') closeHelp(); };
+  // jukebox (easter egg): the brand dot opens it; so does the Music-tab button
+  $('.brand .dot').onclick = openJuke;
+  $('#jukeClose').onclick = closeJuke;
+  $('#jukeModal').onclick = (e) => { if (e.target.id === 'jukeModal') closeJuke(); };
+  $('#jukeSong').onchange = e => { JUKE.song = e.target.value; loadJukePlan(); };
+  $('#jukeTempo').oninput = e => { JUKE.tempo = +e.target.value; $('#jukeTempoVal').textContent = (+e.target.value).toFixed(2) + '×'; if (JUKE.plan) renderJukeMap(); };
+  $('#jukeLoop').onclick = e => { JUKE.loop = !JUKE.loop; e.currentTarget.classList.toggle('on', JUKE.loop); };
+  $('#jukeImport').onchange = e => { jukeImportFile(e.target.files[0]); e.target.value = ''; };
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     if (!$('#swap').hidden) closeSwap();
@@ -675,6 +935,8 @@ function wireGlobal() {
     else if (!$('#browser').hidden) closeBrowser();
     else if (!$('#tipModal').hidden) closeTip();
     else if (!$('#recModal').hidden) closeRec();
+    else if (!$('#jukeModal').hidden) closeJuke();
+    else if (!$('#helpModal').hidden) closeHelp();
   });
   const m = $('#master');
   m.oninput = () => { $('#masterVal').textContent = fmt(m.value,2); setFill(m); };
@@ -691,6 +953,13 @@ async function syncExternal() {
   if (s.active !== STATE.active) { STATE.active = s.active; $('#npName').textContent = s.active; }
   if (s.muted !== STATE.muted) { STATE.muted = s.muted; setPower(!s.muted); document.body.classList.toggle('is-muted', s.muted); }
   STATE.sessions = s.sessions;
+  // refresh per-session mini-track sparklines (slow cadence is fine)
+  try {
+    const t = await api.get('/api/timelines');
+    const sig = JSON.stringify(Object.entries(t).map(([k, v]) => [k, v.count]));
+    TIMELINES = t;
+    if (sig !== STATE._tlSig) { STATE._tlSig = sig; renderRail(); }
+  } catch { }
 }
 
 /* ---------------- live activity ---------------- */
@@ -704,6 +973,12 @@ async function poll() {
   Object.entries(a.voices).forEach(([vn, ts]) => { if (ts && ts !== lastVoiceTs[vn]) { if (lastVoiceTs[vn] !== undefined) flare(vn); lastVoiceTs[vn] = ts; } paintDot($(`.vrow[data-voice="${cssEsc(vn)}"] .orb`), a.now - ts, true); });
   Object.entries(a.events).forEach(([en, ts]) => { paintDot($(`.erow[data-event="${cssEsc(en)}"] .edot`), a.now - ts, false); });
   if (a.counts) { EVT_COUNTS = a.counts; paintFreq(); maybeSortEvents(); }
+  // live replay state (button + playhead on the rail sparklines)
+  if (a.midiplay) {
+    const mp = a.midiplay;
+    REPLAY = { active: !!mp.active && mp.kind === 'replay', session: mp.session, progress: mp.progress };
+    paintReplay();
+  }
   // refresh rail when sessions change (not whole stage)
   if (a.sessions) {
     STATE.sessions = a.sessions;

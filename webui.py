@@ -23,6 +23,7 @@ RULES_FILE = STATE / "rules.json"
 SESSIONS_FILE = STATE / "sessions.json"
 EVENT_PY = str(HERE / "event.py")
 RECORD_PY = str(HERE / "record.py")
+MIDIPLAY_PY = str(HERE / "midiplay.py")
 REC_DIR = STATE / "recording"
 REC_ACTIVE = REC_DIR / "active.json"
 REC_EVENTS = REC_DIR / "events.jsonl"
@@ -34,6 +35,16 @@ try:
     import song as song_mod
 except Exception:
     song_mod = None
+
+try:
+    import midiplay as midiplay_mod
+except Exception:
+    midiplay_mod = None
+
+try:
+    import timeline as timeline_mod
+except Exception:
+    timeline_mod = None
 
 # A-rooted scales (mirrors event.py SCALES keys) — for the global/per-session override.
 SCALE_NAMES = ["A_major", "A_pent", "A_lydian", "A_lydian_pent", "A_dorian",
@@ -448,11 +459,12 @@ def activity(name):
     voices = {vn: ts(sd / f"last-{vn}.txt") for vn in (p.get("voices", {}) or {})}
     events = {ev: ts(sd / f"evt-{ev}.txt") for ev in ALL_EVENTS}
     counts = {ev: csize(sd / f"cnt-{ev}.bin") for ev in ALL_EVENTS}
+    mp = midiplay_mod.status() if midiplay_mod else {"active": False}
     return {"now": now, "muted": bool(load_config().get("muted")),
             "active": active_preset_name(),
             "heartbeat": ts(STATE / "heartbeat"),
             "voices": voices, "events": events, "counts": counts,
-            "sessions": sessions_list()}
+            "sessions": sessions_list(), "midiplay": mp}
 
 # ---------- HTTP ----------
 
@@ -528,6 +540,27 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"palette": build_palette()})
         if path == "/api/record/status":
             return self._send(200, record_status())
+        if path == "/api/midiplay/status":
+            if not midiplay_mod:
+                return self._send(200, {"active": False})
+            return self._send(200, midiplay_mod.status())
+        if path == "/api/midiplay/plan":
+            if not midiplay_mod:
+                return self._send(200, {"error": "no midiplay module"})
+            song = (q.get("song") or [""])[0]
+            preset = (q.get("preset") or [active_preset_name()])[0]
+            p = midiplay_mod.plan(song, preset)
+            return self._send(200, p) if p else self._send(404, {"error": "no plan"})
+        if path == "/api/timelines":
+            # heavy-traffic sparkline + counts for each active session (rail)
+            if not timeline_mod:
+                return self._send(200, {})
+            out = {}
+            for s in sessions_list():
+                summ = timeline_mod.summary(s["id"])
+                if summ:
+                    out[s["id"]] = summ
+            return self._send(200, out)
         if path.startswith("/recordings/"):
             fn = urllib.parse.unquote(path[len("/recordings/"):])
             f = OUT_DIR / fn
@@ -674,6 +707,26 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
                 return self._send(200, {"ok": True})
+            if path == "/api/midiplay/start":
+                return self._midiplay_start(b)
+            if path == "/api/midiplay/stop":
+                if midiplay_mod:
+                    midiplay_mod.stop_running()
+                return self._send(200, {"ok": True})
+            if path == "/api/song/import":
+                return self._song_import(b)
+            if path == "/api/score/replay":
+                return self._score_replay(b)
+            if path == "/api/score/stop":
+                if midiplay_mod:
+                    midiplay_mod.stop_running()
+                return self._send(200, {"ok": True})
+            if path == "/api/score/export":
+                if not timeline_mod:
+                    return self._send(200, {"ok": False, "msg": "no timeline module"})
+                base = timeline_mod.export_score(str(b.get("id", "")), b.get("label"))
+                return self._send(200, {"ok": bool(base), "name": base} if base
+                                  else {"ok": False, "msg": "no timeline for that session"})
         except KeyError as e:
             return self._send(400, {"error": f"missing {e}"})
         except Exception as e:
@@ -801,6 +854,99 @@ class Handler(BaseHTTPRequestHandler):
             or next(iter(p.get("voices", {})), None)
         ok = play_voice(preset, pick) if pick else False
         return self._send(200, {"ok": ok, "voice": pick})
+
+    # ---- jukebox: perform a MIDI file through the active preset ----
+
+    def _midiplay_start(self, b):
+        if not midiplay_mod:
+            return self._send(200, {"ok": False, "msg": "no midiplay module"})
+        song = str(b.get("song", "")).strip()
+        if not song or not song_mod or not song_mod.has_song(song):
+            return self._send(200, {"ok": False, "msg": "unknown song"})
+        midiplay_mod.stop_running()                       # only one at a time
+        preset = b.get("preset") or active_preset_name()
+        cmd = ["/usr/bin/env", "python3", MIDIPLAY_PY, song, "--preset", str(preset)]
+        if b.get("tempo") is not None:
+            cmd += ["--tempo", f"{clamp(float(b['tempo']), 0.25, 4.0):.3f}"]
+        if b.get("bpm") is not None:
+            cmd += ["--bpm", f"{clamp(float(b['bpm']), 20, 400):.2f}"]
+        if b.get("loop"):
+            cmd += ["--loop"]
+        # mapping: {channel: event} → "ch=Event,ch=Event"
+        mapping = b.get("mapping") or {}
+        if isinstance(mapping, dict) and mapping:
+            pairs = ",".join(f"{k}={v}" for k, v in mapping.items() if v)
+            if pairs:
+                cmd += ["--map", pairs]
+        subprocess.Popen(cmd, cwd=str(HERE),
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True, close_fds=True)
+        return self._send(200, {"ok": True, "song": song, "preset": preset})
+
+    def _score_replay(self, b):
+        """Replay a captured session through a preset. With render=true, opens an
+        audio recording window first so the replay bounces to a shareable WAV."""
+        if not midiplay_mod or not timeline_mod:
+            return self._send(200, {"ok": False, "msg": "replay unavailable"})
+        sid = str(b.get("id", "")).strip()
+        score = timeline_mod.read_session(sid)
+        if not score or not score.get("events"):
+            return self._send(200, {"ok": False, "msg": "no timeline for that session"})
+        midiplay_mod.stop_running()                       # one performance at a time
+        preset = b.get("preset") or active_preset_name()
+        tempo = clamp(float(b.get("tempo", 1.0)), 0.25, 4.0)
+        max_gap = clamp(float(b.get("max_gap", 2.5)), 0.2, 30.0)
+        loop = bool(b.get("loop"))
+        # render-to-WAV: arm a recording window sized to the replay before playing
+        rendered = False
+        if b.get("render") and not loop:
+            dur = timeline_mod.replay_duration(score["events"], tempo, max_gap)
+            if not REC_ACTIVE.exists() and dur > 0:
+                secs = max(1, min(300, int(dur) + 2))
+                REC_DIR.mkdir(parents=True, exist_ok=True)
+                rc = ["/usr/bin/env", "python3", RECORD_PY, "run", str(secs)]
+                if b.get("drone"):
+                    rc.append("--drone")
+                subprocess.Popen(rc, cwd=str(HERE), stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True)
+                rendered = True
+                time.sleep(0.25)                          # let the window open first
+        cmd = ["/usr/bin/env", "python3", MIDIPLAY_PY, "replay", sid,
+               "--preset", str(preset), "--tempo", f"{tempo:.3f}", "--max-gap", f"{max_gap:.2f}"]
+        if loop:
+            cmd.append("--loop")
+        subprocess.Popen(cmd, cwd=str(HERE), stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True)
+        return self._send(200, {"ok": True, "session": sid, "preset": preset, "rendering": rendered})
+
+    def _song_import(self, b):
+        """Accept a base64-encoded .mid upload and add it to the song library —
+        so you can drop a MIDI straight into the jukebox from the browser."""
+        if not song_mod:
+            return self._send(200, {"ok": False, "msg": "no song module"})
+        import base64, tempfile
+        data_b64 = b.get("b64") or ""
+        if "," in data_b64 and data_b64[:5] == "data:":   # strip data: URL prefix
+            data_b64 = data_b64.split(",", 1)[1]
+        try:
+            raw = base64.b64decode(data_b64)
+        except Exception:
+            return self._send(200, {"ok": False, "msg": "bad upload data"})
+        if not raw or raw[:4] != b"MThd":
+            return self._send(200, {"ok": False, "msg": "not a Standard MIDI File"})
+        name = b.get("name") or "song"
+        tmp = Path(tempfile.gettempdir()) / "claudio_upload.mid"
+        try:
+            tmp.write_bytes(raw)
+            sname, parsed = song_mod.import_midi_file(tmp, name)
+        except Exception as e:
+            return self._send(200, {"ok": False, "msg": f"import failed: {e}"})
+        finally:
+            try: tmp.unlink()
+            except Exception: pass
+        return self._send(200, {"ok": True, "name": sname,
+                                "notes": len(parsed.get("notes") or []),
+                                "bpm": parsed.get("bpm")})
 
 
 def main():

@@ -114,6 +114,10 @@ Here's the neat part: because Claudio already knows every sound it plays, record
 
 Prefer buttons? Hit **● Rec** in `claudio web` — pick a length, optionally flip on the drone bed, go work in your sessions, and grab the clip with a built-in player and download link.
 
+**🎹 Jukebox (a little easter egg).** Don't want to wait for Claude to make sounds? *Perform* a MIDI file through the active preset. Each MIDI track is mapped to an **event type** — so the "PostToolUse voice" carries the melody while the "SessionStart voice" lays down a bass line — and the Events tab + constellation bloom in time. Start a recording first and you've captured a whole song played in your preset's palette. Click the **`.`** after *Claudio* (or the Music tab's **🎹 Jukebox** button) to open it, drop in any `.mid`, and press play. From the CLI: `claudio play <song>` (import one with `claudio song import <file.mid>`).
+
+**🎬 Session mini-tracks — replay your workflow.** Every Claude session is quietly captured as a tiny **symbolic timeline** (a few KB of JSON — just *what happened, when*, no audio). In `claudio web`, each session in the left rail gets a **heavy-traffic sparkline** (see the dense, bursty stretches at a glance) and a **▶ replay** button. Replay re-runs your actual workflow as music through *any* preset — so you can audition the same session across presets and tune until it sounds great. Idle gaps are compressed so the busy parts stay punchy. Then **● render WAV** bounces it to a shareable clip, or **⤓ score** saves the tiny `.score.json` (far lighter to share than a WAV, and replayable anywhere). From the CLI: `claudio replay list`, `claudio replay <session|latest> [--preset X] [--tempo 1] [--loop] [--render]`.
+
 > **Share it! 🎧** Post your clip with the preset name so others can hear how their sessions could sound. The more sounds people share, the richer Claudio gets — and if you tune a combination you love, [open a PR with the preset](#-make-your-own-preset) too.
 
 ---

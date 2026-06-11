@@ -2,89 +2,116 @@
 """
 Claudio Symphony — control CLI.
 
+Ambient music that sonifies Claude Code hook events. Commands below tune what
+you hear, where it plays, and how to capture and share it.
+
 Quick on/off
-  off                              Silence everything (hooks short-circuit)
-  on                               Restore (auto-restarts drone if preset has one)
+  off                              Silence everything (hooks short-circuit, kills drone + afplay)
+  on                               Restore enabled state (auto-restarts drone if preset has one)
   toggle                           Flip between on and off
 
 Setup
-  install / uninstall              Manage hooks in ~/.claude/settings.json
-  status                           Show install + drone + preset state (and ON/OFF)
-  start / stop                     Drone daemon (no-op for presets without one)
-  regen [preset]                   Re-render samples for a preset
+  install                          Add claudio hooks to ~/.claude/settings.json
+  uninstall                        Remove claudio hooks from ~/.claude/settings.json
+  status                           Show install + drone + preset state, hooks, sessions, songs, quant
+  start                            Start the drone daemon for the active preset (no-op if no drone)
+  stop                             Stop the drone process and kill afplay
+  regen [preset]                   Re-render samples for a preset (active if unspecified)
+  reset [--yes|-y]                 Full reset to shipped defaults; clears songs/quant/pins/rules/sessions
 
 Presets
-  preset list                      Available presets
-  preset use <name>                Switch global default preset (live)
-  preset use default               Switch to the shipped default preset (meadow)
-  preset current                   Print active preset
-  preset reset [name]              Restore preset.json from preset.default.json
-  reset                            Full reset: defaults preset + master gain,
-                                   restore every preset, clear songs/quant/pins
+  preset list                      Available presets (* marks active)
+  preset current                   Print the active preset name
+  preset use <name>|default        Switch global default preset (live: stops old drone, starts new)
+  preset reset [name]              Restore a preset.json from its preset.default.json
+  audition                         Hear every preset, optionally pick one (safe anytime)
 
 Per-session routing
-  sessions                         List active sessions (last 4h)
+  sessions                         List active sessions from the last 4h (presets + cwd)
+  session list                     Same as `sessions`
   session pin <id|idx> <preset>    Pin one session to a specific preset
-  session unpin <id|idx>           Remove the pin
-  here <preset>                    Add a cwd rule for the current dir
-  rule list                        Show cwd-pattern → preset rules
+  session unpin <id|idx>           Remove a session's preset pin
+  session song <id|idx> <name|off> Pin a song to one session (overrides preset)
+  session scale <id|idx> <name|off> Pin a scale to one session
+  here <preset>                    Add a cwd rule for the current directory → preset
+
+Directory rules (routing by cwd, optionally time/idle gated)
+  rule list                        Show all cwd-pattern → preset rules
   rule add <pattern> <preset>      Add or replace a rule (glob or path-prefix)
-  rule rm <pattern>                Remove a rule
+  rule add <pattern> <preset> --time HH:MM-HH:MM    Time-of-day rule (apply only in window)
+  rule add <pattern> <preset> --idle-after <secs>   Idle-only rule (apply after N secs idle)
+  rule rm <pattern>                Remove all rules matching pattern (alias: rules)
 
 Live tuning
-  web                              Open the browser control panel (stunning, live)
-  tune                             Open the curses TUI
   volume <0..1>                    Master gain
-  drone-volume <0..1>              Drone gain
-  voice <name> gain <0..1>         Per-voice gain (active preset)
-  voice <name> mioi <seconds>      Per-voice rate-limit
-  voice <name> reverb <wet> [decay] [bright] | off   Per-voice reverb (regens that voice)
-  voice <name> delay <ms> [fb] [count] | off         Per-voice delay/echo (live, no regen)
-  voice <name> fx                  Show this voice's reverb + delay
-  voice <name> play                Preview that voice once
-  map <event>[:<tool>] <voice|-|none>   Change event mapping
-  mute <event>[:<tool>]            Set mapping to silent
-  unmute <event>[:<tool>] [voice]  Restore mapping (default: first voice)
-  test [voice]                     Walk all events of active preset
-  demo                             60-second showcase of the active preset
-  audition                         Hear every preset, optionally pick one
-  status-line                      Print one-line live state (for tmux/etc.)
+  drone-volume <0..1>              Drone gain (apply requires drone restart)
+  voice <name> gain <0..1>         Per-voice gain
+  voice <name> mioi <seconds>      Per-voice minimum-interval rate-limit
+  voice <name> reverb <wet> [decay] [bright]|off    Per-voice reverb (regenerates that voice)
+  voice <name> delay <ms> [fb] [count]|off          Per-voice delay/echo (live, no regen)
+  voice <name> fx                  Show this voice's reverb + delay (alias: show)
+  voice <name> play                Preview one random sample from this voice
+  test [voice]                     Walk all events of the active preset (or only those on voice)
+  demo                             60-second showcase of the active preset with musical pacing
 
-Adaptive routing (extends `rule add`)
-  rule add <pattern> <preset> --time HH:MM-HH:MM      Time-of-day rule
-  rule add * <preset> --idle-after <seconds>          Idle-only rule
+Event mapping
+  map <event>[:<tool>] <voice|none> Map event[/tool] to a voice (none/-/null/silent = silent)
+  mute <event>[:<tool>]            Set an event/tool mapping to silent
+  unmute <event>[:<tool>] [voice]  Restore a mapping (defaults to first voice)
+  event show                       Show current per-event effects (alias: list, ls)
+  event delay <Event> <ms> [fb] [count]   Per-event delay/echo (40-2000ms, 0..0.85 fb, 0..8 count)
+  event delay <Event> off          Remove an event's delay
 
-Scale & effect tuning
-  scale list                                          Available scales (A_pent, A_lydian, etc.)
-  scale use <name> / scale off                        Global scale override
-  session scale <id|idx> <name>                       Pin a scale to one session
-  preset reverb <0..2>                                Active preset reverb scale (auto-regen)
-  event delay <Event> <ms> [feedback] [count]         Per-event delay echo at trigger
-  event delay <Event> off                             Remove that event's echo
-  event show                                          Show current event effects
+Scales & reverb space
+  scale list                       Available scales (* marks active)
+  scale use <name>                 Set global scale override (or just `scale <name>`)
+  scale off                        Clear global scale override (off/stop/disable/clear)
+  scale show                       Print active override + session pins (show/current/status)
+  preset reverb <0..2>             Set active preset reverb_scale multiplier and regenerate
 
-MIDI songs + quantization
-  song import <file.mid> [name]    Import a MIDI file (Mario, Sonic, anything)
-  song import-dir <folder>         Import every *.mid in a folder
+MIDI songs (melody source for events)
   song list                        List imported songs (* = global default)
-  song use <name>                  Set as global default
-  song off                         Clear global default → Markov picker
-  song current                     Show resolution + positions
-  song reset [name]                Restart song's pointer (default: global)
-  song channel <name> <lead|all|N> Pick which MIDI channel drives the melody
+  song import <file.mid> [name]    Import a MIDI file (auto-detects lead channel)
+  song import-dir <folder>         Import every *.mid in a folder
+  song use <name>                  Set as global default (events cycle through notes)
+  song off                         Clear global default → Markov picker (off/stop/disable)
+  song current                     Show position + channel + preset/session pins (current/status/show)
+  song reset [name]                Restart a song's pointer (default: global song)
+  song channel <name> <lead|all|N> Pick which MIDI channel drives melody (lead = auto-detect)
   song info <name>                 Show channel summary + detected lead
   preset song <preset> <name|off>  Per-preset default song (overrides global)
-  session song <id|idx> <name|off> Pin a song to one session (overrides preset)
-  quant on / off / status          Toggle master quantization
+
+Quantization
+  quant on|off|toggle              Enable/disable master quantization
+  quant status                     Show current quant state (status/show)
   tempo <bpm>                      Set master quantization tempo
-  grid <subdivision>               Beats per cell (0.25=16th, 0.5=8th, 1=quarter)
+  grid <subdivision>               Beats per cell (0.25=16th, 0.5=8th, 1=quarter, half=2.0)
+
+Jukebox — perform a MIDI file through the active preset (easter egg)
+  play list                        Songs you can perform (alias: jukebox)
+  play <name> [--preset X] [--tempo 1.0] [--loop] [--map ch=Event,...]
+                                   Perform a MIDI now; each channel → event type → its voice
+  play stop                        Stop the current performance (stop/halt)
+  play status                      Show JSON status of current playback
+
+Session replay — re-run a captured session as music
+  replay list                      Captured sessions with event counts + density (alias: session-replay)
+  replay <id|latest> [--preset X] [--tempo 1] [--loop] [--render]
+                                   Replay one session; --render captures it to WAV
+  replay stop                      Stop the current replay (stop/halt)
+  replay export <id|latest> [label] Export a session as a tiny shareable score.json
 
 Record & share
   record [seconds] [--drone]       Record a clip of your session (default 30s, max 300s)
                                    --drone bakes in a faded drone bed (off by default)
-  record stop                      Finish the current recording now and save
-  record status / list             Show recording state / list saved clips
-                                   → saved to recordings/ as .wav + .m4a; share your sounds!
+  record stop                      Finish the current recording now and save (stop/end/finish)
+  record status                    Show recording state + saved clips (status/show)
+  record list                      List saved clips in recordings/ as .wav + .m4a (alias: rec)
+
+Control surfaces
+  web [--port N] [--no-open]       Open the browser control panel (default port 8788; alias: ui)
+  tune                             Open the curses TUI for live parameter editing
+  status-line                      Print one-line live state, for tmux/etc. (alias: statusline)
 
 Support
   coffee                           Show on-chain tip addresses (alias: tip, donate)
@@ -95,6 +122,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import song as song_mod  # noqa: E402
+import midiplay as midiplay_mod  # noqa: E402
+import timeline as timeline_mod  # noqa: E402
 
 PRESETS = HERE / "presets"
 STATE = HERE / "state"
@@ -891,6 +920,130 @@ def _channel_label(song, name):
     return f"ch{ch}"
 
 
+def _timeline_ids():
+    d = timeline_mod.TIMELINE
+    return sorted((p.stem for p in d.glob("*.ndjson")), key=lambda s: (timeline_mod.TIMELINE / f"{s}.ndjson").stat().st_mtime, reverse=True) if d.exists() else []
+
+
+def cmd_replay(args):
+    """Replay a captured session ('mini-track') through a preset — re-runs your
+    actual workflow as music. Always-on capture means any recent session works."""
+    if args and args[0] in ("stop", "halt"):
+        midiplay_mod.stop_running(); print("replay stopped"); return
+    if args and args[0] == "export":
+        if len(args) < 2:
+            print("usage: claudio replay export <session_id|latest> [label]"); return
+        sid = _timeline_ids()[0] if args[1] == "latest" and _timeline_ids() else args[1]
+        base = timeline_mod.export_score(sid, args[2] if len(args) > 2 else None)
+        print(f"exported recordings/{base}.score.json (tiny + shareable)" if base else "no timeline for that session")
+        return
+    if not args or args[0] in ("list", "ls"):
+        ids = _timeline_ids()
+        if not ids:
+            print("(no sessions captured yet — they record automatically as you work)")
+            return
+        print(f"{'session':<14} {'events':>7}  {'length':>7}  busiest")
+        for sid in ids:
+            s = timeline_mod.summary(sid)
+            if not s: continue
+            bars = "".join("▁▂▃▄▅▆▇█"[min(7, int(v / (s['peak'] or 1) * 7))] for v in s["density"][::max(1, len(s["density"]) // 24)])
+            print(f"{sid[:13]:<14} {s['count']:>7}  {s['duration']:>6.0f}s  {bars}")
+        print("\nreplay one:  claudio replay <session_id|latest> [--preset X] [--tempo 1] [--loop] [--render]")
+        return
+
+    sid = args[0]
+    rest = args[1:]
+    if sid == "latest":
+        ids = _timeline_ids()
+        if not ids: print("(no sessions captured yet)"); return
+        sid = ids[0]
+    preset = None; tempo = 1.0; loop = False; render = False; max_gap = 2.5
+    i = 0
+    while i < len(rest):
+        a = rest[i]
+        if a == "--preset" and i + 1 < len(rest): preset = rest[i + 1]; i += 2
+        elif a == "--tempo" and i + 1 < len(rest): tempo = float(rest[i + 1]); i += 2
+        elif a == "--max-gap" and i + 1 < len(rest): max_gap = float(rest[i + 1]); i += 2
+        elif a == "--loop": loop = True; i += 1
+        elif a in ("--render", "--wav"): render = True; i += 1
+        else: i += 1
+    s = timeline_mod.read_session(sid)
+    if not s or not s.get("events"):
+        print(f"no timeline for session '{sid}'. try: claudio replay list"); return
+    preset = preset or active_preset_name()
+    dur = timeline_mod.replay_duration(s["events"], tempo, max_gap)
+    print(f"▶ replaying session {sid[:12]} through '{preset}'  "
+          f"({s['count']} events · ~{dur:.0f}s{' · LOOP' if loop else ''})")
+    if render:
+        secs = max(1, min(300, int(dur) + 2))
+        rec_dir = STATE / "recording"; rec_dir.mkdir(parents=True, exist_ok=True)
+        subprocess.Popen([sys.executable, str(HERE / "record.py"), "run", str(secs)],
+                         cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True, close_fds=True)
+        print(f"  ● rendering to a WAV in recordings/ ({secs}s)")
+        time.sleep(0.3)
+    print("  (Ctrl-C to stop)\n")
+    midiplay_mod.run_score(sid, preset, tempo=tempo, loop=loop, max_gap=max_gap)
+    print("done.")
+
+
+def cmd_play(args):
+    """Jukebox: perform a whole MIDI file through the active preset, mapping
+    each MIDI channel to an event type → its voice. The easter egg."""
+    if args and args[0] in ("stop", "halt"):
+        midiplay_mod.stop_running()
+        print("jukebox stopped")
+        return
+    if args and args[0] in ("status",):
+        print(json.dumps(midiplay_mod.status(), indent=2))
+        return
+    if not args or args[0] in ("list", "ls"):
+        names = song_mod.list_songs()
+        if not names:
+            print("(no songs imported — `claudio song import <file.mid>`)")
+        else:
+            print("songs you can perform:")
+            for n in names:
+                s = song_mod.load_song(n) or {}
+                print(f"  {n:<24} {len(s.get('notes') or []):>5} notes  bpm={s.get('bpm')}")
+            print("\nplay one:  claudio play <name> [--preset X] [--tempo 1.0] [--loop]")
+        return
+
+    song_name = args[0]
+    rest = args[1:]
+    preset = bpm = mapping = None
+    tempo = 1.0
+    loop = False
+    i = 0
+    while i < len(rest):
+        a = rest[i]
+        if a == "--preset" and i + 1 < len(rest): preset = rest[i + 1]; i += 2
+        elif a == "--tempo" and i + 1 < len(rest): tempo = float(rest[i + 1]); i += 2
+        elif a == "--bpm" and i + 1 < len(rest): bpm = float(rest[i + 1]); i += 2
+        elif a == "--map" and i + 1 < len(rest): mapping = midiplay_mod._parse_map_arg(rest[i + 1]); i += 2
+        elif a == "--loop": loop = True; i += 1
+        else: i += 1
+
+    if not song_mod.has_song(song_name):
+        print(f"unknown song '{song_name}'. available: {', '.join(song_mod.list_songs()) or '(none)'}")
+        return
+    preset = preset or active_preset_name()
+    p = midiplay_mod.plan(song_name, preset, mapping)
+    if not p or not p.get("channels"):
+        print("nothing to play (no mappable channels / voices in this preset)")
+        return
+    print(f"♪ performing '{song_name}' through '{preset}'  "
+          f"({p['total_notes']} notes · {p['duration']:.0f}s · bpm {p['bpm']*tempo:.0f})")
+    print("  track → event → voice:")
+    for r in p["channels"]:
+        lead = " ◆lead" if r["is_lead"] else ""
+        print(f"    ch{r['channel']:<2} {r['register']:>4} {r['notes']:>4}n{lead:<6}"
+              f"  →  {r['event'] or '—':<16} → {r['voice'] or '(silent)'}")
+    print("  ▶ playing… (Ctrl-C to stop)\n")
+    midiplay_mod.run(song_name, preset, bpm=bpm, tempo=tempo, loop=loop, mapping=mapping)
+    print("done.")
+
+
 def cmd_song(args):
     if not args or args[0] in ("list", "ls"):
         names = song_mod.list_songs()
@@ -1500,6 +1653,8 @@ def main(argv):
     elif cmd == "scale":                cmd_scale(args)
     elif cmd == "event":                cmd_event(args)
     elif cmd in ("song", "songs"):      cmd_song(args)
+    elif cmd in ("play", "jukebox"):    cmd_play(args)
+    elif cmd in ("replay", "session-replay"): cmd_replay(args)
     elif cmd == "quant":                cmd_quant(args)
     elif cmd == "tempo":                cmd_tempo(args)
     elif cmd == "grid":                 cmd_grid(args)
