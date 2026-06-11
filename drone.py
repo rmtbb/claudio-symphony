@@ -3,13 +3,16 @@
 Claudio Symphony — preset-aware drone player.
 
 Reads the active preset; if preset.drone is null, exits cleanly (no drone).
-Otherwise loops the preset's drone WAV via afplay until idle-timeout.
+Otherwise loops the preset's drone WAV via the detected audio backend
+(audio.py) until idle-timeout.
 Single-instance via PID file.
 """
-import os, sys, time, signal, subprocess, json
+import os, sys, time, signal, json
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import audio  # noqa: E402  (cross-platform playback backend)
 PRESETS = HERE / "presets"
 STATE = HERE / "state"
 LOGS = HERE / "logs"
@@ -18,6 +21,7 @@ PID_FILE = STATE / "drone.pid"
 ACTIVE_PRESET_FILE = STATE / "drone-preset.txt"
 HEARTBEAT_FILE = STATE / "heartbeat"
 LOG_FILE = LOGS / "drone.log"
+STOP_SENTINEL = STATE / "drone.stop"   # cooperative stop (Windows has no SIGTERM handler)
 STATE.mkdir(exist_ok=True); LOGS.mkdir(exist_ok=True)
 
 IDLE_TIMEOUT_S = 10 * 60   # exit after 10 min of no events
@@ -50,13 +54,7 @@ def existing_pid_alive():
     if not PID_FILE.exists(): return None
     try: pid = int(PID_FILE.read_text().strip())
     except Exception: return None
-    try:
-        os.kill(pid, 0)
-        return pid
-    except ProcessLookupError:
-        return None
-    except PermissionError:
-        return pid
+    return pid if audio.pid_alive(pid) else None
 
 def write_pid():
     PID_FILE.write_text(str(os.getpid()))
@@ -103,6 +101,11 @@ def main():
     if not HEARTBEAT_FILE.exists():
         HEARTBEAT_FILE.write_text(str(time.time()))
 
+    try:
+        if STOP_SENTINEL.exists(): STOP_SENTINEL.unlink()
+    except Exception:
+        pass
+
     def shutdown(*_):
         log("shutdown signal")
         cleanup_pid()
@@ -110,15 +113,24 @@ def main():
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
 
+    if audio.get_backend().name == "null":
+        log("no audio backend available; exiting (not spinning)")
+        cleanup_pid()
+        sys.exit(1)
+
     cfg = read_config()
     drone_gain = float(cfg.get("drone_gain", preset.get("drone_gain", 0.45)))
-    log(f"drone start preset={name} pid={os.getpid()} gain={drone_gain}")
+    log(f"drone start preset={name} pid={os.getpid()} gain={drone_gain} "
+        f"backend={audio.get_backend().name}")
 
     try:
         while True:
             age = heartbeat_age()
             if age is not None and age > IDLE_TIMEOUT_S:
                 log(f"idle {age:.0f}s, exiting")
+                break
+            if STOP_SENTINEL.exists():
+                log("stop sentinel; exiting")
                 break
             # If user switched presets while drone running, exit so
             # `claudio start` can re-spawn for the new preset.
@@ -129,15 +141,19 @@ def main():
             except Exception:
                 pass
             try:
-                subprocess.run(
-                    ["/usr/bin/afplay", "-v", f"{drone_gain:.3f}", str(drone_path)],
-                    check=False,
-                )
+                code = audio.drone_play_once(drone_path, drone_gain)
+                if code == 127:          # backend unavailable mid-run
+                    log("backend unavailable; exiting")
+                    break
             except Exception as e:
-                log(f"afplay error: {e}")
+                log(f"player error: {e}")
                 time.sleep(2)
     finally:
         cleanup_pid()
+        try:
+            if STOP_SENTINEL.exists(): STOP_SENTINEL.unlink()
+        except Exception:
+            pass
         log("drone stop")
 
 if __name__ == "__main__":

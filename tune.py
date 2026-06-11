@@ -25,10 +25,16 @@ per-event delay/echo (off → subtle → medium → long → echo).
 Reverb_scale changes require regen; the TUI flags it on save and you can run
 `claudio regen <preset>` (or 'r' inside the TUI) to apply.
 """
-import curses, json, time, os, sys, subprocess, math, random
+import json, time, os, sys, math, random
 from pathlib import Path
+try:
+    import curses
+except ImportError:
+    curses = None   # Windows: needs `pip install windows-curses` (see guard in main)
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import audio  # noqa: E402  (cross-platform playback + process helpers)
 PRESETS = HERE / "presets"
 STATE = HERE / "state"
 CONFIG = HERE / "config.json"
@@ -590,11 +596,7 @@ class TuneUI:
             self.status("no render.py for this preset"); return
         self.status(f"regenerating {self.preset_name} samples (background)...", dur=8.0)
         try:
-            subprocess.Popen(
-                ["/usr/bin/env", "python3", str(rp)],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                start_new_session=True, close_fds=True,
-            )
+            audio.spawn_python(rp, detached=True)
         except Exception as e:
             self.status(f"regen failed: {e}")
             return
@@ -650,11 +652,7 @@ class TuneUI:
         gain = max(0.0, min(1.0, gain))
         sample = random.choice(samples)
         try:
-            subprocess.Popen(
-                ["/usr/bin/afplay", "-v", f"{gain:.3f}", str(sample)],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                start_new_session=True, close_fds=True,
-            )
+            audio.play_simple(sample, gain)
             self.status(f"play {voice} ({sample.name})")
         except Exception as e:
             self.status(f"play failed: {e}")
@@ -781,6 +779,11 @@ class TuneUI:
                 break
 
 def main():
+    if curses is None:
+        print("`claudio tune` (curses TUI) needs the curses module.\n"
+              "On Windows:  pip install windows-curses\n"
+              "Or use the web console instead:  claudio web", file=sys.stderr)
+        sys.exit(2)
     if not sys.stdout.isatty():
         print("claudio tune requires an interactive terminal", file=sys.stderr)
         sys.exit(2)

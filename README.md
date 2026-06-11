@@ -149,11 +149,16 @@ Open a new Claude Code session and listen. That's it.
 > **👉 There's a full UI.** Run **`claudio web`** to open the browser control panel — a live constellation of your voices where you can tune everything, browse and switch all 36 presets, build your own, and record clips. No build step, runs locally on `127.0.0.1`. See [The web control panel](#️-the-web-control-panel).
 
 **Requirements**
-- 🍎 macOS (uses `afplay` — Linux/Windows support is one small patch in `event.py`; PRs welcome)
-- 🐍 Python 3.9+ with **numpy**
+- 🖥️ **macOS, Linux, or Windows.** Claudio auto-detects the best audio player on your system (override with `CLAUDIO_PLAYER`):
+  - 🍎 **macOS** — built-in `afplay`. Nothing to install; full quality.
+  - 🐧 **Linux** — `ffplay` (from `ffmpeg`) for full quality; falls back to `mpv` / `sox` / `pw-play` / `paplay` / `aplay`. `sudo apt install ffmpeg` (or your distro's equivalent) recommended.
+  - 🪟 **Windows** — `ffplay` (`winget install -e --id Gyan.FFmpeg`) for full quality; falls back to PowerShell MediaPlayer (volume only) then `winsound` (basic blips).
+- 🐍 Python 3.9+ with **numpy** — still the only Python dependency. (Players are auto-detected, never auto-installed.)
 - 💾 ~250 MB free for generated samples (one-time render, then static)
 
-Tip: add `alias claudio='~/path/to/claudio-symphony/bin/claudio'` to your shell profile.
+Song-mode pitch micro-tuning is native on afplay/ffplay/mpv/sox; on volume-only backends (`pw-play`/`paplay`/Windows MediaPlayer) it's reproduced by an offline numpy pre-render (cached under `state/rate_cache/`), so it still works everywhere. The curses tuner (`claudio tune`) needs `pip install windows-curses` on Windows — or just use `claudio web`, which works everywhere.
+
+Tip: add `alias claudio='~/path/to/claudio-symphony/bin/claudio'` to your shell profile (macOS/Linux). On Windows, run via `bin\claudio.cmd`.
 
 ---
 
@@ -241,7 +246,7 @@ event.py  (~50 ms total)
        │  ├─ rate-limits per voice (drops too-soon hits, banks "pressure"
        │  │   that bumps the next note's amplitude)
        │  ├─ picks a pitch melodically (Markov-weighted, stays in scale)
-       │  └─ launches `afplay` detached
+       │  └─ launches the detected player detached (afplay / ffplay / … via `audio.py`)
        ▼
    (your speakers)
 ```

@@ -10,12 +10,13 @@ the live-activity view reads the very markers event.py touches when Claude works
 Run:  python3 webui.py [--port 8788] [--open]
   or: claudio web
 """
-import os, sys, json, time, re, random, shutil, signal, threading, subprocess, urllib.parse
+import os, sys, json, time, re, random, shutil, signal, threading, urllib.parse
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import audio  # noqa: E402  (cross-platform playback + process helpers)
 PRESETS = HERE / "presets"
 STATE = HERE / "state"
 CONFIG = HERE / "config.json"
@@ -91,10 +92,7 @@ def samples_in(d):
 
 def play_sample(path, gain):
     try:
-        subprocess.Popen(
-            ["/usr/bin/afplay", "-v", f"{clamp(gain,0,1):.3f}", str(path)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True, close_fds=True)
+        audio.play_simple(path, clamp(gain, 0, 1))
         return True
     except Exception:
         return False
@@ -117,9 +115,7 @@ def regen_voice(preset, voice):
     if not render.exists(): return False, "no render.py for this preset"
     def _run():
         try:
-            subprocess.run(["/usr/bin/env", "python3", str(render), voice],
-                           cwd=str(HERE), check=False,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            audio.spawn_python(render, [voice], cwd=str(HERE))
         except Exception:
             pass
     threading.Thread(target=_run, daemon=True).start()
@@ -194,9 +190,8 @@ def fire_test(preset_hint=None):
         for name, extra in seq:
             payload = {"hook_event_name": name, "session_id": "webtest", **extra}
             try:
-                p = subprocess.Popen(["/usr/bin/env", "python3", EVENT_PY],
-                                     stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                p.communicate(json.dumps(payload).encode(), timeout=3)
+                audio.spawn_python(EVENT_PY, stdin_bytes=json.dumps(payload).encode(),
+                                   timeout=3)
             except Exception:
                 pass
             time.sleep(1.4)
@@ -655,9 +650,8 @@ class Handler(BaseHTTPRequestHandler):
                 name = b.get("name", active_preset_name())
                 render = PRESETS / name / "render.py"
                 if render.exists():
-                    threading.Thread(target=lambda: subprocess.run(
-                        ["/usr/bin/env", "python3", str(render)], cwd=str(HERE), check=False,
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
+                    threading.Thread(target=lambda: audio.spawn_python(render, cwd=str(HERE)),
+                                     daemon=True).start()
                 return self._send(200, {"ok": render.exists()})
             if path == "/api/preset/reset":
                 return self._preset_reset(b)
@@ -693,12 +687,8 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception: secs = 30
                 secs = max(1, min(300, secs))
                 REC_DIR.mkdir(parents=True, exist_ok=True)
-                cmd = ["/usr/bin/env", "python3", RECORD_PY, "run", str(secs)]
-                if b.get("drone"):
-                    cmd.append("--drone")
-                subprocess.Popen(cmd, cwd=str(HERE),
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                 start_new_session=True, close_fds=True)
+                rargs = ["run", str(secs)] + (["--drone"] if b.get("drone") else [])
+                audio.spawn_python(RECORD_PY, rargs, detached=True)
                 return self._send(200, {"ok": True, "seconds": secs, "drone": bool(b.get("drone"))})
             if path == "/api/record/stop":
                 try:
@@ -800,9 +790,8 @@ class Handler(BaseHTTPRequestHandler):
         # full regen in background
         render = PRESETS / preset / "render.py"
         if render.exists():
-            threading.Thread(target=lambda: subprocess.run(
-                ["/usr/bin/env", "python3", str(render)], cwd=str(HERE), check=False,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
+            threading.Thread(target=lambda: audio.spawn_python(render, cwd=str(HERE)),
+                             daemon=True).start()
         return self._send(200, {"ok": True, "regen": render.exists()})
 
     def _session_set(self, b, key, value):
@@ -865,22 +854,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": False, "msg": "unknown song"})
         midiplay_mod.stop_running()                       # only one at a time
         preset = b.get("preset") or active_preset_name()
-        cmd = ["/usr/bin/env", "python3", MIDIPLAY_PY, song, "--preset", str(preset)]
+        pargs = [song, "--preset", str(preset)]
         if b.get("tempo") is not None:
-            cmd += ["--tempo", f"{clamp(float(b['tempo']), 0.25, 4.0):.3f}"]
+            pargs += ["--tempo", f"{clamp(float(b['tempo']), 0.25, 4.0):.3f}"]
         if b.get("bpm") is not None:
-            cmd += ["--bpm", f"{clamp(float(b['bpm']), 20, 400):.2f}"]
+            pargs += ["--bpm", f"{clamp(float(b['bpm']), 20, 400):.2f}"]
         if b.get("loop"):
-            cmd += ["--loop"]
+            pargs += ["--loop"]
         # mapping: {channel: event} → "ch=Event,ch=Event"
         mapping = b.get("mapping") or {}
         if isinstance(mapping, dict) and mapping:
             pairs = ",".join(f"{k}={v}" for k, v in mapping.items() if v)
             if pairs:
-                cmd += ["--map", pairs]
-        subprocess.Popen(cmd, cwd=str(HERE),
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         start_new_session=True, close_fds=True)
+                pargs += ["--map", pairs]
+        audio.spawn_python(MIDIPLAY_PY, pargs, detached=True)
         return self._send(200, {"ok": True, "song": song, "preset": preset})
 
     def _score_replay(self, b):
@@ -904,19 +891,15 @@ class Handler(BaseHTTPRequestHandler):
             if not REC_ACTIVE.exists() and dur > 0:
                 secs = max(1, min(300, int(dur) + 2))
                 REC_DIR.mkdir(parents=True, exist_ok=True)
-                rc = ["/usr/bin/env", "python3", RECORD_PY, "run", str(secs)]
-                if b.get("drone"):
-                    rc.append("--drone")
-                subprocess.Popen(rc, cwd=str(HERE), stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True)
+                rargs = ["run", str(secs)] + (["--drone"] if b.get("drone") else [])
+                audio.spawn_python(RECORD_PY, rargs, detached=True)
                 rendered = True
                 time.sleep(0.25)                          # let the window open first
-        cmd = ["/usr/bin/env", "python3", MIDIPLAY_PY, "replay", sid,
-               "--preset", str(preset), "--tempo", f"{tempo:.3f}", "--max-gap", f"{max_gap:.2f}"]
+        rargs = ["replay", sid, "--preset", str(preset),
+                 "--tempo", f"{tempo:.3f}", "--max-gap", f"{max_gap:.2f}"]
         if loop:
-            cmd.append("--loop")
-        subprocess.Popen(cmd, cwd=str(HERE), stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True)
+            rargs.append("--loop")
+        audio.spawn_python(MIDIPLAY_PY, rargs, detached=True)
         return self._send(200, {"ok": True, "session": sid, "preset": preset, "rendering": rendered})
 
     def _song_import(self, b):
@@ -960,8 +943,7 @@ def main():
     url = f"http://127.0.0.1:{port}/"
     print(f"Claudio web UI → {url}  (Ctrl-C to stop)")
     if do_open:
-        try: subprocess.Popen(["/usr/bin/open", url])
-        except Exception: pass
+        audio.open_url(url)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
