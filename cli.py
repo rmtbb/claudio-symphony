@@ -116,7 +116,7 @@ Control surfaces
 Support
   coffee                           Show on-chain tip addresses (alias: tip, donate)
 """
-import os, sys, json, time, fnmatch
+import os, sys, json, time, fnmatch, shlex
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -195,7 +195,10 @@ def hook_block_for():
         "matcher": "*",
         "hooks": [{
             "type": "command",
-            "command": EVENT_PATH,
+            # shell-quoted so an install path containing spaces (e.g. a repo at
+            # "…/Claudio Symphony/event.py") still execs correctly. shlex.quote
+            # is a no-op for space-free paths, so existing installs are unchanged.
+            "command": shlex.quote(EVENT_PATH),
             "async": True,
             "timeout": 1,
             MARKER: True,
