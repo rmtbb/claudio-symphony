@@ -1376,10 +1376,6 @@ _DEMO_SCRIPT = [
 ]
 
 
-def _fire_event_payload(payload):
-    audio.spawn_python(EVENT_PATH, stdin_bytes=json.dumps(payload).encode())
-
-
 def cmd_demo(args):
     """60-second showcase. Fires events with musical gaps; selectively clears
     MIOI before bloom/cluster events so they actually sound."""
@@ -1408,7 +1404,7 @@ def cmd_demo(args):
         elapsed = time.time() - started
         ev_label = f"{ev}{f'({tool})' if tool else ''}"
         print(f"  {int(elapsed):>2}s  {ev_label:<28} → {voice or '-':<10}  {label}")
-        _fire_event_payload(payload)
+        fire_event(payload)
         time.sleep(gap)
     print("─" * 70)
     print(f"demo complete ({int(time.time() - started)}s).")
@@ -1450,7 +1446,7 @@ def cmd_audition(args):
                 payload = {"hook_event_name": ev, "session_id": "audition"}
                 if ev in ("PreToolUse", "PostToolUse"):
                     payload["tool_name"] = "Read"
-                _fire_event_payload(payload)
+                fire_event(payload)
                 time.sleep(1.4)
             time.sleep(1.0)
         print("─" * 70)

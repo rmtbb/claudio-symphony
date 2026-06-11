@@ -212,10 +212,26 @@ def update_session_record(session_id, cwd, event_name, resolved_preset, source):
 
 # ---------- sample selection + playback ----------
 
+_SAMPLES_CACHE = {}   # (preset, voice_dir) -> (dir_mtime, [paths])
+
 def list_samples(preset_name, voice_dir):
+    """Sorted .wav paths for a voice, memoized by the sample dir's mtime. The
+    per-hook process calls this once (negligible), but the jukebox/replay loops
+    call it per note — caching avoids re-scanning the directory every note.
+    Keyed on dir mtime so adding/removing samples invalidates; a regen that
+    rewrites same-named WAVs keeps paths valid (audio reads content at play time)."""
     d = PRESETS / preset_name / "samples" / voice_dir
-    if not d.exists(): return []
-    return sorted(p for p in d.iterdir() if p.suffix == ".wav")
+    try:
+        mtime = d.stat().st_mtime
+    except OSError:
+        return []
+    key = (preset_name, voice_dir)
+    hit = _SAMPLES_CACHE.get(key)
+    if hit is not None and hit[0] == mtime:
+        return hit[1]
+    samples = sorted(p for p in d.iterdir() if p.suffix == ".wav")
+    _SAMPLES_CACHE[key] = (mtime, samples)
+    return samples
 
 # ---------- melodic picker ----------
 #

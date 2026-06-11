@@ -234,13 +234,54 @@ def _build_schedule(song, mapping, bpm):
     return sched
 
 
+def _perform_master(preset):
+    """Resolved master gain — config override wins, else the preset's value."""
+    return float(ev.read_config().get("master_gain", preset.get("master_gain", 0.5)))
+
+
+def _run_loop(sched, fire_one, on_tick=None, _stop=None, loop=False, on_loop_start=None):
+    """Shared real-time scheduler for the jukebox AND session replay. `sched` is
+    a list of (t_seconds, item); `fire_one(item)` plays it. Sleeps to each note's
+    wall-clock target, drops notes over the burst cap (fork-bomb guard), and
+    repeats while `loop`. `on_loop_start()` runs before each pass (replay uses it
+    to reset its in-memory rate-limit)."""
+    stop = _stop if _stop is not None else {"stop": False}
+    recent = deque()       # onset times, for the burst guard
+    total = len(sched)
+    while not stop.get("stop"):
+        if on_loop_start:
+            on_loop_start()
+        t0 = time.time()
+        for idx, (t, item) in enumerate(sched):
+            if stop.get("stop"):
+                break
+            target = t0 + t
+            while True:
+                dt = target - time.time()
+                if dt <= 0 or stop.get("stop"):
+                    break
+                time.sleep(min(dt, 0.05))
+            if stop.get("stop"):
+                break
+            now = time.time()
+            while recent and now - recent[0] > _BURST_WINDOW_S:
+                recent.popleft()
+            if len(recent) >= _BURST_MAX:
+                continue                      # drop a note rather than fork-bomb
+            recent.append(now)
+            fire_one(item)
+            if on_tick:
+                on_tick(idx + 1, total, now - t0)
+        if not loop or stop.get("stop"):
+            break
+
+
 def perform(song_name, preset_name=None, bpm=None, tempo=1.0, loop=False,
             mapping=None, on_tick=None, _stop=None):
-    """Play `song_name` through `preset_name` in real time. Blocks until the
-    song ends (or `loop` forever) or `_stop` is set. `mapping` overrides the
-    auto channel→event map ({channel:int → event:str}). `tempo` multiplies the
-    file's bpm (>1 faster). `on_tick(idx, total, elapsed)` is called as notes
-    fire."""
+    """Play `song_name` through `preset_name` in real time (jukebox). `mapping`
+    overrides the auto channel→event map ({channel:int → event:str}); `tempo`
+    multiplies the file's bpm. Blocks until the song ends, `loop` forever, or
+    `_stop` is set."""
     preset_name = preset_name or ev.active_preset_name()
     song = song_mod.load_song(song_name)
     preset = ev.load_preset(preset_name)
@@ -258,43 +299,19 @@ def perform(song_name, preset_name=None, bpm=None, tempo=1.0, loop=False,
                 full_map.pop(ch, None)
             else:
                 full_map[ch] = v
-    sched = _build_schedule(song, full_map, eff_bpm)
-    if not sched:
+    raw = _build_schedule(song, full_map, eff_bpm)
+    if not raw:
         return False
+    master = _perform_master(preset)
+    sched = [(t, (evname, midi, vel)) for (t, _ch, evname, midi, vel) in raw]
 
-    master = float(ev.read_config().get("master_gain",
-                   preset.get("master_gain", 0.5)))
-    stop = _stop if _stop is not None else {"stop": False}
-    recent = deque()       # afplay onset times, for the burst guard
-    total = len(sched)
+    def fire(item):
+        evname, midi, vel = item
+        voice = event_voice(preset, evname)   # re-read: preset may be edited mid-play
+        if voice:
+            _fire(preset_name, preset, master, evname, voice, midi, vel)
 
-    while not stop.get("stop"):
-        t0 = time.time()
-        for idx, (t, ch, evname, midi, vel) in enumerate(sched):
-            if stop.get("stop"):
-                break
-            target = t0 + t
-            while True:
-                dt = target - time.time()
-                if dt <= 0 or stop.get("stop"):
-                    break
-                time.sleep(min(dt, 0.05))
-            if stop.get("stop"):
-                break
-            now = time.time()
-            while recent and now - recent[0] > _BURST_WINDOW_S:
-                recent.popleft()
-            if len(recent) >= _BURST_MAX:
-                continue                      # drop a note rather than fork-bomb
-            recent.append(now)
-            # voice may have changed if the preset was edited mid-play; re-read
-            voice = event_voice(preset, evname)
-            if voice:
-                _fire(preset_name, preset, master, evname, voice, midi, vel)
-            if on_tick:
-                on_tick(idx + 1, total, now - t0)
-        if not loop or stop.get("stop"):
-            break
+    _run_loop(sched, fire, on_tick=on_tick, _stop=_stop, loop=loop)
     return True
 
 
@@ -331,8 +348,35 @@ def stop_running():
     return True
 
 
+def _run_performance(meta_extra, duration, total, perform_fn):
+    """Shared foreground lifecycle for jukebox + replay: claim active.json,
+    install SIGTERM/SIGINT, run perform_fn(on_tick, _stop) with throttled
+    progress writes (~12/s), then clean up. One performance at a time."""
+    PLAY_DIR.mkdir(parents=True, exist_ok=True)
+    _save(ACTIVE, {"pid": os.getpid(), "start": time.time(),
+                   "duration": round(duration, 2), "total_notes": total, **meta_extra})
+    _save(PROGRESS, {"idx": 0, "total": total, "elapsed": 0.0, "playing": True})
+    stop = {"stop": False}
+    def _sig(_s, _f): stop["stop"] = True
+    signal.signal(signal.SIGTERM, _sig)
+    signal.signal(signal.SIGINT, _sig)
+    last_write = [0.0]
+    def _tick(idx, n, elapsed):
+        if elapsed - last_write[0] >= 0.08 or idx >= n:
+            last_write[0] = elapsed
+            _save(PROGRESS, {"idx": idx, "total": n, "elapsed": round(elapsed, 2), "playing": True})
+    try:
+        perform_fn(_tick, stop)
+    finally:
+        try: ACTIVE.unlink()
+        except Exception: pass
+        try: _save(PROGRESS, {"playing": False})
+        except Exception: pass
+    return True
+
+
 def run(song_name, preset_name=None, bpm=None, tempo=1.0, loop=False, mapping=None):
-    """Foreground entry: claim active.json, perform, then clean up. Honors
+    """Foreground jukebox entry: claim active.json, perform, clean up. Honors
     SIGTERM / SIGINT (web Stop button, Ctrl-C)."""
     preset_name = preset_name or ev.active_preset_name()
     if not song_mod.has_song(song_name):
@@ -342,41 +386,14 @@ def run(song_name, preset_name=None, bpm=None, tempo=1.0, loop=False, mapping=No
     if not p or not p.get("channels"):
         print("nothing to play (no mappable channels / voices)")
         return False
-
     eff_bpm = float(bpm or p["bpm"]) * float(tempo or 1.0)
     duration = _song_duration(song_mod.load_song(song_name), eff_bpm)
-    PLAY_DIR.mkdir(parents=True, exist_ok=True)
-    _save(ACTIVE, {
-        "pid": os.getpid(), "song": song_name, "preset": preset_name,
-        "bpm": round(eff_bpm, 2), "tempo": float(tempo or 1.0), "loop": bool(loop),
-        "total_notes": p["total_notes"], "duration": round(duration, 2),
-        "channels": p["channels"], "start": time.time(),
-    })
-    _save(PROGRESS, {"idx": 0, "total": p["total_notes"], "elapsed": 0.0,
-                     "last_event": None, "last_channel": None})
-
-    stop = {"stop": False}
-    def _sig(_s, _f): stop["stop"] = True
-    signal.signal(signal.SIGTERM, _sig)
-    signal.signal(signal.SIGINT, _sig)
-
-    last_write = [0.0]
-    def _tick(idx, total, elapsed):
-        # throttle progress writes to ~12/s
-        if elapsed - last_write[0] >= 0.08 or idx >= total:
-            last_write[0] = elapsed
-            _save(PROGRESS, {"idx": idx, "total": total, "elapsed": round(elapsed, 2),
-                             "playing": True})
-
-    try:
-        perform(song_name, preset_name, bpm=bpm, tempo=tempo, loop=loop,
-                mapping=mapping, on_tick=_tick, _stop=stop)
-    finally:
-        try: ACTIVE.unlink()
-        except Exception: pass
-        try: _save(PROGRESS, {"playing": False})
-        except Exception: pass
-    return True
+    meta = {"kind": "jukebox", "song": song_name, "preset": preset_name,
+            "bpm": round(eff_bpm, 2), "tempo": float(tempo or 1.0), "loop": bool(loop),
+            "channels": p["channels"]}
+    return _run_performance(meta, duration, p["total_notes"],
+        lambda on_tick, _stop: perform(song_name, preset_name, bpm=bpm, tempo=tempo,
+                                       loop=loop, mapping=mapping, on_tick=on_tick, _stop=_stop))
 
 
 # ---------- session replay (the "mini-track" player) ----------
@@ -429,38 +446,20 @@ def _replay_fire(preset_name, preset, master, mioi_last, e, tool, fail):
 def perform_score(events, preset_name, preset, tempo=1.0, loop=False,
                   max_gap=2.5, on_tick=None, _stop=None):
     """Replay a list of captured events in real time through `preset`."""
-    sched = tl.replay_schedule(events, tempo=tempo, max_gap=max_gap)
-    if not sched:
+    raw = tl.replay_schedule(events, tempo=tempo, max_gap=max_gap)
+    if not raw:
         return False
-    master = float(ev.read_config().get("master_gain", preset.get("master_gain", 0.5)))
-    stop = _stop if _stop is not None else {"stop": False}
-    recent = deque()
-    total = len(sched)
-    while not stop.get("stop"):
-        mioi_last = {}
-        t0 = time.time()
-        for idx, (t, e, tool, fail) in enumerate(sched):
-            if stop.get("stop"):
-                break
-            target = t0 + t
-            while True:
-                dt = target - time.time()
-                if dt <= 0 or stop.get("stop"):
-                    break
-                time.sleep(min(dt, 0.05))
-            if stop.get("stop"):
-                break
-            now = time.time()
-            while recent and now - recent[0] > _BURST_WINDOW_S:
-                recent.popleft()
-            if len(recent) >= _BURST_MAX:
-                continue
-            recent.append(now)
-            _replay_fire(preset_name, preset, master, mioi_last, e, tool, fail)
-            if on_tick:
-                on_tick(idx + 1, total, now - t0)
-        if not loop or stop.get("stop"):
-            break
+    master = _perform_master(preset)
+    mioi_last = {}
+    sched = [(t, (e, tool, fail)) for (t, e, tool, fail) in raw]
+
+    def fire(item):
+        e, tool, fail = item
+        _replay_fire(preset_name, preset, master, mioi_last, e, tool, fail)
+
+    # reset the in-memory rate-limit at each loop restart (matches prior behavior)
+    _run_loop(sched, fire, on_tick=on_tick, _stop=_stop, loop=loop,
+              on_loop_start=mioi_last.clear)
     return True
 
 
@@ -480,32 +479,11 @@ def run_score(session_id, preset_name=None, tempo=1.0, loop=False, max_gap=2.5):
         return False
     events = score["events"]
     duration = tl.replay_duration(events, tempo, max_gap)
-    PLAY_DIR.mkdir(parents=True, exist_ok=True)
-    _save(ACTIVE, {
-        "pid": os.getpid(), "kind": "replay", "session": session_id,
-        "preset": preset_name, "tempo": float(tempo or 1.0), "loop": bool(loop),
-        "total_notes": len(events), "duration": round(duration, 2), "start": time.time(),
-    })
-    _save(PROGRESS, {"idx": 0, "total": len(events), "elapsed": 0.0, "playing": True})
-
-    stop = {"stop": False}
-    def _sig(_s, _f): stop["stop"] = True
-    signal.signal(signal.SIGTERM, _sig)
-    signal.signal(signal.SIGINT, _sig)
-    last_write = [0.0]
-    def _tick(idx, total, elapsed):
-        if elapsed - last_write[0] >= 0.08 or idx >= total:
-            last_write[0] = elapsed
-            _save(PROGRESS, {"idx": idx, "total": total, "elapsed": round(elapsed, 2), "playing": True})
-    try:
-        perform_score(events, preset_name, preset, tempo=tempo, loop=loop,
-                      max_gap=max_gap, on_tick=_tick, _stop=stop)
-    finally:
-        try: ACTIVE.unlink()
-        except Exception: pass
-        try: _save(PROGRESS, {"playing": False})
-        except Exception: pass
-    return True
+    meta = {"kind": "replay", "session": session_id, "preset": preset_name,
+            "tempo": float(tempo or 1.0), "loop": bool(loop)}
+    return _run_performance(meta, duration, len(events),
+        lambda on_tick, _stop: perform_score(events, preset_name, preset, tempo=tempo,
+                                             loop=loop, max_gap=max_gap, on_tick=on_tick, _stop=_stop))
 
 
 # ---------- CLI ----------
