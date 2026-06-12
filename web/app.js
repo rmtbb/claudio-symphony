@@ -536,6 +536,7 @@ const WEB_HELP = [
     'Options → Headphone mode: with Claudio in your ears the mic never hears it, so Listen tracks you continuously.',
     'Options → Mic monitor: mic passthrough with Claudio\'s reverb + delay on your voice or instrument — actually jam with your Claudio. Headphones only, so it can\'t feed back.',
     'Add a chord progression (Music tab) and the room cycles changes underneath you while you play.',
+    'Turn the drone on (Setup) and the bed bends to your voice in ~½s as Listen re-keys — set it to follow the chords and it walks the changes too.',
     'Monitor space slider: dry ↔ drenched. Everything stays in this browser — no audio leaves your machine.'] },
 ];
 function openHelp() {
@@ -973,7 +974,6 @@ function renderSettings() {
   const wrap = $('#settings'); wrap.innerHTML = '';
   const rows = [
     { lab: 'Master gain', small: 'overall volume', val: STATE.master_gain, change: v => { api.post('/api/master', { gain: v }); STATE.master_gain = v; $('#master').value = v; setFill($('#master')); $('#masterVal').textContent = fmt(v,2); } },
-    { lab: 'Drone gain', small: 'sustained bed (presets with a drone)', val: STATE.drone_gain, change: v => api.post('/api/drone', { gain: v }) },
   ];
   rows.forEach(r => {
     const el = document.createElement('div'); el.className = 'setrow';
@@ -983,11 +983,53 @@ function renderSettings() {
     inp.oninput = () => { el.querySelector('.val').textContent = fmt(inp.value,2); setFill(inp); };
     inp.onchange = () => r.change(+inp.value); wrap.appendChild(el);
   });
+  renderDrone(wrap);
   // Reverb space lives in the always-visible stage header (the "reverb space"
   // knob), so it isn't duplicated here — just point people at it.
   const note = document.createElement('div'); note.className = 'setrow setrow-note';
   note.innerHTML = `<div class="lab">Reverb space<small>hall size · the “reverb space” knob up in the stage header</small></div>`;
   wrap.appendChild(note);
+}
+
+/* drone bed: on/off + gain + follow-the-chords. The drone always follows the
+   live root note (mic-jam included) — retuning within ~½s, so you can hear
+   the bed bend as you hum. Off by default; only presets with a drone qualify. */
+function renderDrone(wrap) {
+  const d = STATE.drone || { available: false, running: false, follow_chords: false, gain: 0.45 };
+  const el = document.createElement('div'); el.className = 'setrow dronerow';
+  if (!d.available) {
+    el.innerHTML = `<div class="lab">Drone bed<small>this preset has no drone — try <b>cathedral</b></small></div>
+      <div class="toggle" style="opacity:.35;pointer-events:none"><span class="tk"></span></div>`;
+    wrap.appendChild(el); return;
+  }
+  el.innerHTML = `<div class="lab">Drone bed<small>${d.running ? 'humming — it follows the root note live (🎤 too)' : 'off · sustained bed that follows the root note live'}</small></div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <input type="range" class="r" id="droneGain" min="0" max="1" step="0.01" value="${d.gain}" style="width:96px" title="drone gain">
+      <span class="val" id="droneGainVal" style="font:11px/1 var(--mono);color:var(--muted);min-width:30px">${fmt(d.gain,2)}</span>
+      <div class="toggle${d.running ? ' on' : ''}" id="droneOn" title="start/stop the drone"><span class="tk"></span></div>
+    </div>`;
+  const fl = document.createElement('div'); fl.className = 'setrow';
+  fl.innerHTML = `<div class="lab">Drone follows chords<small>walk the progression's roots instead of holding A · needs a progression on</small></div>
+    <div class="toggle${d.follow_chords ? ' on' : ''}" id="droneFollow"><span class="tk"></span></div>`;
+  const g = el.querySelector('#droneGain'); setFill(g);
+  g.oninput = () => { el.querySelector('#droneGainVal').textContent = fmt(g.value,2); setFill(g); };
+  g.onchange = () => { api.post('/api/drone', { gain: +g.value }); STATE.drone_gain = +g.value; };
+  el.querySelector('#droneOn').onclick = async (e) => {
+    const on = !e.currentTarget.classList.contains('on');
+    const r = await api.post(on ? '/api/drone/start' : '/api/drone/stop', {});
+    if (r.drone) STATE.drone = r.drone;
+    if (on && r.ok === false) { toast(r.msg || 'no drone'); return; }
+    renderSettings();
+    toast(on ? 'drone <span class="g">on</span> — it follows your root' : 'drone off');
+  };
+  fl.querySelector('#droneFollow').onclick = async (e) => {
+    const on = !e.currentTarget.classList.contains('on');
+    e.currentTarget.classList.toggle('on', on);
+    await api.post('/api/drone/follow', { on });
+    if (STATE.drone) STATE.drone.follow_chords = on;
+    toast(on ? 'drone walks the <span class="g">chords</span>' : 'drone holds the root');
+  };
+  wrap.appendChild(el); wrap.appendChild(fl);
 }
 
 /* ---------------- music (global defaults) ---------------- */
@@ -1256,7 +1298,7 @@ function wireGlobal() {
 }
 async function syncExternal() {
   const s = await api.get('/api/state');
-  STATE.presets = s.presets; STATE.rules = s.rules; STATE.music = s.music;
+  STATE.presets = s.presets; STATE.rules = s.rules; STATE.music = s.music; STATE.drone = s.drone;
   if (s.active !== STATE.active) { STATE.active = s.active; $('#npName').textContent = s.active; }
   if (s.muted !== STATE.muted) { STATE.muted = s.muted; setPower(!s.muted); document.body.classList.toggle('is-muted', s.muted); }
   STATE.sessions = s.sessions;

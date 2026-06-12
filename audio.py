@@ -604,6 +604,18 @@ def play_simple(sample_path, gain_linear, tag="preview"):
     _spawn_one(sample_path, max(0.0, min(1.0, gain_linear)), None, 0.0, tag)
 
 
+def drone_play_start(sample_path, gain_linear, rate=None):
+    """Non-blocking drone spawn: start one tagged drone player and return its
+    Popen (None on winsound/null backends — callers fall back to the blocking
+    drone_play_once there). Lets drone.py watch for live root/chord changes
+    mid-clip and retune by overlapping a new player and retiring this one."""
+    be = get_backend()
+    if be.kind in ("null", "winsound"):
+        return None
+    return _spawn_one(sample_path, max(0.0, min(1.0, gain_linear)), rate, 0.0,
+                      "drone", block=True)
+
+
 def drone_play_once(sample_path, gain_linear, rate=None) -> int:
     """Blocking single play for drone.py's loop. Spawns the player tracked
     (tag='drone') so stop_drone() can target exactly this player across

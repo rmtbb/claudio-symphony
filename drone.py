@@ -17,6 +17,22 @@ def _root_offset(cfg):
     except (TypeError, ValueError): return 0
     return max(-6, min(6, n))
 
+def _drone_semis(cfg):
+    """Effective drone transpose: the live root_offset, plus — when the user
+    opts in with config `drone_chords` — the current chord's root, so the bed
+    walks the progression instead of holding the A pedal. Clamped to ±9 so a
+    stacked shift never warps the bed beyond recognition."""
+    off = _root_offset(cfg)
+    if cfg.get("drone_chords"):
+        try:
+            import event as ev          # sibling; lazy so a bare drone stays light
+            _, roots, _ = ev.resolve_chord()
+            if roots:
+                off += ((int(roots[0]) - 9 + 6) % 12) - 6   # nearest move off A
+        except Exception:
+            pass
+    return max(-9, min(9, off))
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import audio  # noqa: E402  (cross-platform playback backend)
@@ -130,35 +146,61 @@ def main():
     log(f"drone start preset={name} pid={os.getpid()} gain={drone_gain} "
         f"backend={audio.get_backend().name}")
 
+    def should_exit():
+        age = heartbeat_age()
+        if age is not None and age > IDLE_TIMEOUT_S:
+            log(f"idle {age:.0f}s, exiting"); return True
+        if STOP_SENTINEL.exists():
+            log("stop sentinel; exiting"); return True
+        # If user switched presets while drone running, exit so
+        # `claudio start` can re-spawn for the new preset.
+        try:
+            if ACTIVE_PRESET_FILE.read_text().strip() != active_preset_name():
+                log("preset changed; exiting"); return True
+        except Exception:
+            pass
+        return False
+
     try:
+        cur, cur_off = None, None
         while True:
-            age = heartbeat_age()
-            if age is not None and age > IDLE_TIMEOUT_S:
-                log(f"idle {age:.0f}s, exiting")
+            if should_exit():
                 break
-            if STOP_SENTINEL.exists():
-                log("stop sentinel; exiting")
-                break
-            # If user switched presets while drone running, exit so
-            # `claudio start` can re-spawn for the new preset.
             try:
-                if ACTIVE_PRESET_FILE.read_text().strip() != active_preset_name():
-                    log("preset changed; exiting")
-                    break
-            except Exception:
-                pass
-            try:
-                # Re-read the live root each loop so mic-jam re-keys carry the
-                # drone with them (rate = 2**(semitones/12)); 0 → native rate.
-                off = _root_offset(read_config())
+                cfg = read_config()
+                gain = float(cfg.get("drone_gain", preset.get("drone_gain", 0.45)))
+                off = _drone_semis(cfg)
                 rate = (2 ** (off / 12.0)) if off else None
-                code = audio.drone_play_once(drone_path, drone_gain, rate)
-                if code == 127:          # backend unavailable mid-run
-                    log("backend unavailable; exiting")
-                    break
+                if cur is None or cur.poll() is not None:
+                    # clip ended (or first pass) — start at the current pitch
+                    cur = audio.drone_play_start(drone_path, gain, rate)
+                    cur_off = off
+                    if cur is None:
+                        # winsound/null backend: no live retune possible —
+                        # fall back to the original blocking loop-per-clip.
+                        code = audio.drone_play_once(drone_path, gain, rate)
+                        if code == 127:
+                            log("backend unavailable; exiting"); break
+                        continue
+                elif off != cur_off:
+                    # The root moved (mic-jam, `claudio root`, or a chord
+                    # change with drone_chords on): retune NOW, not at the
+                    # next loop. Overlap the new player briefly so the swap
+                    # reads as the bed bending, not cutting.
+                    log(f"retune {cur_off:+d} → {off:+d} semis")
+                    nxt = audio.drone_play_start(drone_path, gain, rate)
+                    if nxt is not None:
+                        time.sleep(0.35)
+                        try: cur.terminate()
+                        except Exception: pass
+                        cur, cur_off = nxt, off
+                time.sleep(0.5)          # watcher cadence: ~½s root response
             except Exception as e:
                 log(f"player error: {e}")
                 time.sleep(2)
+        if cur is not None:
+            try: cur.terminate()
+            except Exception: pass
     finally:
         cleanup_pid()
         try:

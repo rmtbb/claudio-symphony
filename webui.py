@@ -222,6 +222,22 @@ def fire_test(preset_hint=None):
             time.sleep(1.4)
     threading.Thread(target=_run, daemon=True).start()
 
+def drone_running():
+    try:
+        pid = int((STATE / "drone.pid").read_text().strip())
+        return pid if audio.pid_alive(pid) else None
+    except Exception:
+        return None
+
+def drone_state(cfg, active):
+    p = load_preset(active) or {}
+    return {
+        "available": bool(p.get("drone")),
+        "running": bool(drone_running()),
+        "follow_chords": bool(cfg.get("drone_chords")),
+        "gain": float(cfg.get("drone_gain", p.get("drone_gain", 0.45))),
+    }
+
 def full_state():
     cfg = load_config()
     active = cfg.get("preset", "meadow")
@@ -230,6 +246,7 @@ def full_state():
         "muted": bool(cfg.get("muted")),
         "master_gain": master_gain(load_preset(active) or {}),
         "drone_gain": float(cfg.get("drone_gain", 0.0)),
+        "drone": drone_state(cfg, active),
         "presets": [preset_card(n) for n in list_preset_names()],
         "sessions": sessions_list(),
         "rules": rules_list(),
@@ -628,6 +645,32 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/drone":
                 cfg = load_config(); cfg["drone_gain"] = round(clamp(float(b["gain"]), 0, 1), 3); save_config(cfg)
                 return self._send(200, {"ok": True, "drone_gain": cfg["drone_gain"]})
+            if path == "/api/drone/start":
+                cfg = load_config(); active = cfg.get("preset", "meadow")
+                p = load_preset(active) or {}
+                if not p.get("drone"):
+                    return self._send(200, {"ok": False, "msg": f"'{active}' has no drone"})
+                if not drone_running():
+                    try: (STATE / "drone.stop").unlink()
+                    except Exception: pass
+                    audio.spawn_python(str(HERE / "drone.py"), detached=True)
+                    time.sleep(0.4)
+                return self._send(200, {"ok": True, "drone": drone_state(load_config(), active)})
+            if path == "/api/drone/stop":
+                pid = drone_running()
+                if pid:
+                    try:
+                        audio.terminate_pid(pid)
+                        (STATE / "drone.stop").write_text("1")
+                    except Exception: pass
+                    time.sleep(0.3)
+                audio.stop_drone()        # silence the in-flight player now
+                cfg = load_config()
+                return self._send(200, {"ok": True, "drone": drone_state(cfg, cfg.get("preset", "meadow"))})
+            if path == "/api/drone/follow":
+                # drone walks the chord progression's roots instead of holding A
+                cfg = load_config(); cfg["drone_chords"] = bool(b.get("on")); save_config(cfg)
+                return self._send(200, {"ok": True, "follow_chords": cfg["drone_chords"]})
             if path == "/api/voice":
                 return self._voice(b)
             if path == "/api/voice/reverb":

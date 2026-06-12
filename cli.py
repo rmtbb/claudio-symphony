@@ -16,6 +16,8 @@ Setup
   status                           Show install + drone + preset state, hooks, sessions, songs, quant
   start                            Start the drone daemon for the active preset (no-op if no drone)
   stop                             Stop the drone process and kill afplay
+  drone [on|off|status]            Drone bed — always follows the live root note (~½s retune)
+  drone follow on|off              Drone also walks the chord progression's roots (off = A pedal)
   regen [preset]                   Re-render samples for a preset (active if unspecified)
   reset [--yes|-y]                 Full reset to shipped defaults; clears songs/quant/pins/rules/sessions
 
@@ -274,6 +276,30 @@ def cmd_start():
     time.sleep(0.4)
     pid = drone_pid()
     print(f"drone started pid={pid}" if pid else f"launch attempted; check {LOGS / 'drone.log'}")
+
+def cmd_drone(args):
+    """Drone bed control. The drone always follows the live root note (mic-jam
+    included, retuning in ~½s); `follow on` makes it walk the chord progression
+    roots too. Usage: claudio drone [on|off|status|follow on|off]."""
+    sub = args[0] if args else "status"
+    if sub in ("on", "start"):
+        return cmd_start()
+    if sub in ("off", "stop"):
+        return cmd_stop()
+    if sub == "follow":
+        cfg = load_config()
+        if len(args) > 1 and args[1] in ("on", "off"):
+            cfg["drone_chords"] = args[1] == "on"; save_config(cfg)
+        print(f"drone follows chords: {'on' if cfg.get('drone_chords') else 'off'}"
+              f"  (always follows the root note)")
+        return
+    pid = drone_pid()
+    cfg = load_config()
+    name = active_preset_name()
+    has = bool((load_preset(name) or {}).get("drone"))
+    print(f"drone: {'running pid=' + str(pid) if pid else 'off'} · preset {name}"
+          f"{'' if has else ' (no drone in this preset)'} · gain {cfg.get('drone_gain', 0.45)}"
+          f" · follows chords: {'on' if cfg.get('drone_chords') else 'off'}")
 
 def cmd_stop():
     pid = drone_pid()
@@ -1704,6 +1730,7 @@ def main(argv):
     elif cmd == "uninstall":            cmd_uninstall()
     elif cmd == "start":                cmd_start()
     elif cmd == "stop":                 cmd_stop()
+    elif cmd == "drone":                cmd_drone(args)
     elif cmd == "status":               cmd_status()
     elif cmd == "test":                 cmd_test(args[0] if args else None)
     elif cmd == "volume" and args:      cmd_volume(args[0])
