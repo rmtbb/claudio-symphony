@@ -18,8 +18,9 @@ It is **not** a notification system. It's a room your Claude session is happenin
 - 🪟 **Hear every session at once.** Running Claude in five terminals? Give each project its own room. Now the chord of your whole workspace is audible — you can tell the quiet one finished and the busy one hit an error, eyes closed.
 - 🎹 **36 presets, each a complete world.** Sunlit music box, lush cathedral, near-silent rainfall, plucked koto, vibraphone lounge, handbell carillon, Rhodes warmth… switch live, mid-session, with one command.
 - 🖥️ **A genuinely beautiful web console.** A living constellation of your voices that blooms in real time as Claude plays them. Click an orb to audition; drag a slider to tune.
+- 🎤 **It jams with the room.** Hit **Listen** and Claudio detects what you're humming — or what music you're playing — and re-keys its whole palette to match, live. Put on headphones, enable **mic monitor**, and your own voice or instrument comes back drenched in Claudio's reverb and delay: you're not listening to your agent anymore, you're *in the band with it*. Turn on a chord progression and the room cycles changes underneath you while you play.
 - 🎚️ **Tune everything, or nothing.** Sensible defaults out of the box — or open the TUI / web panel and shape every voice, reverb tail, and event mapping to taste.
-- 🪶 **Featherweight & private.** ~1,500 lines of Python, one dependency (numpy), no daemon, no telemetry, no network. Hooks fire async with a 1-second timeout, so they *never* slow Claude down.
+- 🪶 **Featherweight & private.** Pure Python, one dependency (numpy), no daemon, no telemetry, no network. Hooks fire async with a 1-second timeout, so they *never* slow Claude down.
 
 ---
 
@@ -87,12 +88,31 @@ claudio web      # opens a local, no-deps control panel in your browser
 
 A "warm nocturne observatory" you'll actually want to leave open:
 
-- 🌠 **A living constellation** — each voice is a glowing orb in a slow-drifting galaxy that **blooms in real time** the instant Claude triggers it. Watch your session play itself.
+- 🌠 **A living constellation** — each voice is a glowing orb in a slow-drifting galaxy that **blooms in real time** the instant Claude triggers it — and when one bursts, it *pushes* its neighbours, so the whole sky wobbles like one fabric. Watch your session play itself.
+- 🌊 **Three ways to watch** — hover the canvas for the ✦ ◍ ≈ switcher: the orb **constellation**, a **still pond** where every sound rings out as a slow ripple, or **flowing tides** where each voice is a silk ribbon and a swell travels its length when it sings.
 - 🎚️ **Tune anything live** — per-voice gain, reverb, echo; remap any event; switch presets; set per-session rules — all written to the same files the CLI and hooks read, so every change is instant.
+- 🔊 **The Sounds tab puts cause and effect in one view** — "Claude does this → you hear that" up top, the full voice rack right below. Hover any event and hit **✎** to jump straight to that voice's controls; clicking a constellation orb does the same. Three tabs total: **Sounds · Music · Setup**.
 - 🔭 **Browse 36 presets** in a searchable gallery, audition with one click.
-- 🎵 **Music tab** — global scale override, quantize-to-tempo, and MIDI song mode.
+- 🎵 **Music tab** — global scale override, quantize-to-tempo, MIDI song mode, and a live **root-note** readout.
+- 🎶 **Chord progressions** — cycle the whole room through the four-chord pop song (I–V–vi–IV), doo-wop, the Andalusian cadence, Pachelbel's Canon, or a lo-fi ii–V–I–vi — or build your own from thirteen chords. The live chord glows in the Music tab and sweeps toward the next change. No daemon, no clock process: the chord is pure wall-time math, so every session and the browser always agree on where you are in the cycle. The drone holds its A pedal underneath — the classic ambient move — and if you've mic-jammed to a new key, the whole progression transposes with you. CLI: `claudio chords pop`, `claudio chords Am F C G`, `claudio chords every 12`, `claudio chords off`.
+- 🎤 **Jam with the room** — hit **Listen** and Claudio tunes its key to whatever's around you. (See below.)
+- 🎨 **Make it yours** — the **⋯ → Options** menu re-skins the whole console to any accent color (six presets or a custom hue — orbs, glows, sparklines, everything), and sets headphone mode, mic monitoring, and how lively the constellation feels. Saved per-browser.
 
 Pure Python standard library on the backend (`127.0.0.1` only), Fraunces + Hanken + Space Mono on the front. No build step, no node_modules.
+
+### 🎤 Listen — jam with the room
+
+Hit **🎤 Listen** in the top bar and Claudio starts singing along with whatever's happening around your computer. It listens through your mic and **detects the note you're humming** — or the key of the music you're playing, a guitar, a piano down the hall — and **re-keys its entire palette to match, live**. Hum a note and watch the button flip to it; put an album on and Claudio slides into its key. The whole room shifts with you, the drone included; nothing re-renders, so it's instant.
+
+**Tap to latch it on** (it keeps listening until you tap again), or **press-and-hold to jam only while held** — handy for grabbing one note and letting go. Either way, **turning Listen off restores the key you were in before** — the mic is a live performance mode, not a permanent setting. The on-button readout shows the note it's settled on and only changes when one note clearly wins, so it reads steady instead of twitchy.
+
+It stays out of its own way without any audio routing or extra dependencies: Claudio is sparse and ambient, so it **listens in the gaps** between its own notes (ignoring the ~0.4s right after it plays), runs a noise gate so quiet hiss is ignored, and only commits to a note that *holds steady* for a beat. If it ever does catch its own tail, that just re-affirms the key it's already in — so it settles instead of drifting. Pitch detection is plain Web Audio autocorrelation in the browser; the mic stream is released the moment you toggle it off.
+
+> Set the key by hand too: the **Root note** field in the Music tab (↺ back to A), or `claudio root C` / `claudio root -2` / `claudio root off` from the CLI. Heads-up: an always-on drone preset (e.g. `cathedral`) gives the mic fewer gaps to listen in — the bright, sparse presets jam most readily.
+
+**🎧 Headphone mode — the real jam setup.** Wearing headphones? Tell Claudio in **⋯ → Options** and Listen gets sharper: with the output in your ears the mic physically can't hear Claudio, so the listening-in-the-gaps filter switches off entirely and it tracks you continuously. Then flip on **Mic monitor** — mic passthrough with **Claudio's reverb and delay on your own voice or instrument**, straight into your headphones. You're processed into the same room Claudio is playing in, and now you can actually **jam with your Claudio**: it follows your key, you ride its texture. A **Monitor space** slider runs dry ↔ drenched. Monitoring is headphones-only by design, so it can never feed back through your speakers, and none of it leaves the browser.
+
+**Take it further: jam over changes.** Turn on a [chord progression](#-the-web-control-panel) (Music tab → Chord progression, or `claudio chords pop`) while Listen and the monitor are running — Claudio cycles the four-chord song (or your own changes) underneath you, in your key, while your voice floats through its reverb. A coding-session ambient system is now, quietly, a backing band.
 
 ---
 
@@ -114,7 +134,7 @@ Here's the neat part: because Claudio already knows every sound it plays, record
 
 Prefer buttons? Hit **● Rec** in `claudio web` — pick a length, optionally flip on the drone bed, go work in your sessions, and grab the clip with a built-in player and download link.
 
-**🎹 Jukebox (a little easter egg).** Don't want to wait for Claude to make sounds? *Perform* a MIDI file through the active preset. Each MIDI track is mapped to an **event type** — so the "PostToolUse voice" carries the melody while the "SessionStart voice" lays down a bass line — and the Events tab + constellation bloom in time. Start a recording first and you've captured a whole song played in your preset's palette. Click the **`.`** after *Claudio* (or the Music tab's **🎹 Jukebox** button) to open it, drop in any `.mid`, and press play. From the CLI: `claudio play <song>` (import one with `claudio song import <file.mid>`).
+**🎹 Jukebox (a little easter egg).** Don't want to wait for Claude to make sounds? *Perform* a MIDI file through the active preset. Each MIDI track is mapped to an **event type** — so the "PostToolUse voice" carries the melody while the "SessionStart voice" lays down a bass line — and the Sounds tab + constellation bloom in time. Pick the **sound kit** right in the header — any preset, independent of your room's active one (try **`studio`** for drums · bass · synth). Every track shows its register, note range and a density bar; map it to an event (with live fire counts, so you can see what your sessions actually use), **pick any voice directly**, or **⊞ browse every sound from all presets** — the jukebox isn't restricted to the active room. Preview each row with ▶, or hit **✨ smart arrange** — drums go to percussive sounds, melodies to voices in the matching register. The **`studio`** preset is a drums/bass/synth kit made exactly for this. When a mix sounds right, **💾 save as preset** copies every mapped sound into a new self-contained preset you can use anywhere. Pitch always comes from the MIDI itself: pitched voices land exactly on every note. Start a recording first and you've captured a whole song played in your preset's palette. Click the **`.`** after *Claudio* (or the Music tab's **🎹 Jukebox** button) to open it, drop in any `.mid`, and press play. From the CLI: `claudio play <song>` (import one with `claudio song import <file.mid>`).
 
 **🎬 Session mini-tracks — replay your workflow.** Every Claude session is quietly captured as a tiny **symbolic timeline** (a few KB of JSON — just *what happened, when*, no audio). In `claudio web`, each session in the left rail gets a **heavy-traffic sparkline** (see the dense, bursty stretches at a glance) and a **▶ replay** button. Replay re-runs your actual workflow as music through *any* preset — so you can audition the same session across presets and tune until it sounds great. Idle gaps are compressed so the busy parts stay punchy. Then **● render WAV** bounces it to a shareable clip, or **⤓ score** saves the tiny `.score.json` (far lighter to share than a WAV, and replayable anywhere). From the CLI: `claudio replay list`, `claudio replay <session|latest> [--preset X] [--tempo 1] [--loop] [--render]`.
 
@@ -206,6 +226,8 @@ claudio voice mallet mioi 0.5             # rate-limit (min seconds between hits
 claudio map PostToolUse:Edit pluck        # remap by tool
 claudio map PostToolUse:on_failure -      # silence the failure variant
 claudio scale use A_lydian                # global scale override
+claudio root C                            # live-transpose the whole room (root off → back to A)
+claudio chords pop                        # cycle the four-chord song (chords Am F C G · every 12 · off)
 claudio song use mario                    # drive a voice from a MIDI melody
 ```
 
@@ -215,7 +237,7 @@ claudio song use mario                    # drive a voice from a MIDI melody
 
 **The easy way — build one in the browser.** Open `claudio web`, hit **✚ Build a preset**, and you get a palette of *every voice from all 36 presets*. Audition any sound with ▶, pick the ones you love, name it, and hit Create — Claudio copies those samples into a new, self-contained preset that works everywhere instantly (start blank, or duplicate an existing preset and add to it). No code, no render step.
 
-- **Swap a single sound** — in the Mix tab, the **↺** button on any voice lets you replace just that one sound with any voice from any preset, keeping its level, echo, and event mappings.
+- **Swap a single sound** — in the Sounds tab, the **↺** button on any voice lets you replace just that one sound with any voice from any preset, keeping its level, echo, and event mappings.
 - **Manage your presets** — custom presets you build get **rename** (✎) and **delete** (🗑) right on their gallery card; the 36 shipped presets are protected and can't be deleted.
 
 **The hands-on way — author it in code.** Each preset is three things:
@@ -251,7 +273,7 @@ event.py  (~50 ms total)
    (your speakers)
 ```
 
-`event.py` is stateless except for tiny per-voice timestamp files. `drone.py` is the only long-running process, and it auto-exits after 10 minutes of silence. No daemon to babysit, no port to conflict, no config server. ~1,500 lines of Python, one dependency.
+`event.py` is stateless except for tiny per-voice timestamp files. `drone.py` is the only long-running process, and it auto-exits after 10 minutes of silence. No daemon to babysit, no port to conflict, no config server. Pure Python, one dependency.
 
 ---
 
@@ -290,7 +312,7 @@ Claudio is free and MIT-licensed, built and maintained in my spare time. If it m
 | **Solana** (SOL) | `2PiDya4hpbpki7iUceyE1uYBDR3dQgW6uCN27JVJUHwS` | USDC (SPL) | <img src="web/qr/sol.svg" width="84" alt="SOL QR"> |
 | **Dogecoin** (DOGE) | `D5HMGHjcRnvdcNY5LGAb1EcMpBm8FD8YHN` | — | <img src="web/qr/doge.svg" width="84" alt="DOGE QR"> |
 
-The Ethereum and Solana addresses receive their **native coin first** (ETH / SOL) and **also** take USDC on that chain — same address, no extra step. Send tokens only on the network listed above so they land somewhere I can reach them. You can also pull these up any time with `claudio coffee`, or via the **☕ Tip** button in `claudio web` (with QR + one-tap copy).
+The Ethereum and Solana addresses receive their **native coin first** (ETH / SOL) and **also** take USDC on that chain — same address, no extra step. Send tokens only on the network listed above so they land somewhere I can reach them. You can also pull these up any time with `claudio coffee`, or via **⋯ → Buy me a coffee** in `claudio web` (with QR + one-tap copy).
 
 > **Verifying these addresses:** all four live in [`donate.json`](donate.json) as the single source of truth, and the app reads the same file. If an address here ever disagrees with `donate.json` or your wallet, treat it as a tampered diff and don't send. (These are public *receiving* addresses — never a private key.)
 

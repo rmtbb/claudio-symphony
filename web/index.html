@@ -31,9 +31,16 @@
       </div>
       <div class="spacer"></div>
       <button class="browse-btn" id="browseBtn">⊞ Browse presets</button>
-      <button class="help-btn" id="helpBtn" title="What can I do here?">?</button>
+      <button class="listen-btn" id="listenBtn" title="Jam with the room — Claudio tunes its key to the loudest steady note your mic hears. Tap to keep it on; press-and-hold to listen only while held. Turning it off restores the previous key.">🎤 <span id="listenLbl">Listen</span></button>
       <button class="rec-btn" id="recBtn" title="Record a clip of your session to share"><span class="rec-dot"></span><span id="recBtnLbl">Rec</span></button>
-      <button class="tip-btn" id="tipBtn" title="Support Claudio — buy me a coffee">☕ Tip</button>
+      <div class="overflow" id="overflow">
+        <button class="of-btn" id="ofBtn" title="More" aria-label="More">⋯</button>
+        <div class="of-menu" id="ofMenu" hidden>
+          <button id="optsBtn"><span class="of-ico">⚙</span> Options</button>
+          <button id="helpBtn"><span class="of-ico">?</span> What can I do here</button>
+          <button id="tipBtn"><span class="of-ico">☕</span> Buy me a coffee</button>
+        </div>
+      </div>
       <div class="pulse" id="pulse"><span class="ring"></span><span id="pulseTxt">idle</span></div>
       <div class="master">
         <label>master</label>
@@ -76,23 +83,26 @@
         <div class="stage-body">
           <div class="constellation">
             <canvas id="sky"></canvas>
-            <div class="const-hint">live voices · click an orb to hear it · orbs bloom as Claude plays</div>
+            <div class="const-hint" id="constHint">live voices · click an orb to hear it · orbs bloom as Claude plays</div>
+            <div class="viz-switch" id="vizSwitch">
+              <button data-viz="orbs" title="Constellation — orbs that bloom and push each other">✦</button>
+              <button data-viz="pond" title="Still pond — every sound is a ripple">◍</button>
+              <button data-viz="tides" title="Tides — each voice is a flowing ribbon">≈</button>
+            </div>
           </div>
 
           <nav class="tabs" id="tabs">
-            <button class="tab on" data-tab="mix">Mix</button>
-            <button class="tab" data-tab="events">Events</button>
+            <button class="tab on" data-tab="sounds">Sounds</button>
             <button class="tab" data-tab="music">Music</button>
-            <button class="tab" data-tab="preset">Preset</button>
-            <button class="tab" data-tab="rules">Rules<span class="tab-badge" id="routeBadge"></span></button>
+            <button class="tab" data-tab="setup">Setup<span class="tab-badge" id="routeBadge"></span></button>
           </nav>
 
           <div class="tabwrap">
-            <section class="tabpanel on" data-panel="mix">
+            <!-- Sounds: the cause-and-effect view. Events (what plays when) lead;
+                 the voice rack follows right below, one scroll, cross-linked. -->
+            <section class="tabpanel on" data-panel="sounds">
+              <div class="panel"><h3>What plays when <span class="hint">Claude does this → you hear that</span></h3><div id="events"></div></div>
               <div class="panel"><h3>Voices <span class="hint" id="voiceHint"></span></h3><div id="voices"></div></div>
-            </section>
-            <section class="tabpanel" data-panel="events" hidden>
-              <div class="panel"><h3>Events <span class="hint">what plays when</span></h3><div id="events"></div></div>
             </section>
             <section class="tabpanel" data-panel="music" hidden>
               <div class="rcols">
@@ -100,20 +110,20 @@
                 <div class="panel"><h3>Rhythm &amp; song <span class="hint">quantize · MIDI</span></h3><div id="musicRhythm"></div></div>
               </div>
             </section>
-            <section class="tabpanel" data-panel="preset" hidden>
+            <section class="tabpanel" data-panel="setup" hidden>
               <div class="rcols">
-                <div class="panel"><h3>Levels</h3><div id="settings"></div></div>
-                <div class="panel"><h3>Actions</h3><div id="presetActions"></div></div>
-              </div>
-            </section>
-            <section class="tabpanel" data-panel="rules" hidden>
-              <div class="panel">
-                <h3>Directory rules <span class="hint">first match wins · cwd glob → preset</span></h3>
-                <div id="rulesList"></div>
-                <div class="ruleform">
-                  <input id="rulePattern" type="text" placeholder="path glob, e.g. */myproject*">
-                  <select id="rulePreset" class="vsel"></select>
-                  <button id="ruleAdd" class="btn">+ add rule</button>
+                <div>
+                  <div class="panel"><h3>Levels</h3><div id="settings"></div></div>
+                  <div class="panel"><h3>Preset actions</h3><div id="presetActions"></div></div>
+                </div>
+                <div class="panel">
+                  <h3>Directory rules <span class="hint">first match wins · cwd glob → preset</span></h3>
+                  <div id="rulesList"></div>
+                  <div class="ruleform">
+                    <input id="rulePattern" type="text" placeholder="path glob, e.g. */myproject*">
+                    <select id="rulePreset" class="vsel"></select>
+                    <button id="ruleAdd" class="btn">+ add rule</button>
+                  </div>
                 </div>
               </div>
             </section>
@@ -127,7 +137,7 @@
       <div class="juke-hero">
         <div class="juke-hero-txt">
           <div class="juke-title">🎹 Jukebox</div>
-          <div class="juke-sub">Perform a MIDI file through <b id="jukePreset">—</b>. Each track plays an <em>event's</em> voice — the Events tab &amp; constellation bloom in time, and if you're recording, the whole performance lands in your clip.</div>
+          <div class="juke-sub">Perform a MIDI file through <select id="jukeKit" class="vsel juke-kit" title="the sound kit — any preset, independent of your room"></select> — try <b>studio</b> for drums · bass · synth. Tracks can map to events (the room blooms) or any sound; if you're recording, the whole performance lands in your clip.</div>
         </div>
         <button class="juke-exit" id="jukeClose" title="Back to the console">← Console</button>
       </div>
@@ -236,6 +246,20 @@
       </header>
       <div class="rec-body" id="recBody"></div>
       <div class="rec-list" id="recList"></div>
+    </div>
+  </div>
+
+  <!-- options: appearance + headphone mode + visuals -->
+  <div class="optsmodal" id="optsModal" hidden>
+    <div class="opts-panel">
+      <header class="opts-head">
+        <div>
+          <div class="opts-title">⚙ Options</div>
+          <div class="opts-sub">Yours to shape — saved in this browser.</div>
+        </div>
+        <button class="opts-close" id="optsClose">✕</button>
+      </header>
+      <div class="opts-body" id="optsBody"></div>
     </div>
   </div>
 

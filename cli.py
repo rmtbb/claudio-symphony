@@ -62,11 +62,13 @@ Event mapping
   event delay <Event> <ms> [fb] [count]   Per-event delay/echo (40-2000ms, 0..0.85 fb, 0..8 count)
   event delay <Event> off          Remove an event's delay
 
-Scales & reverb space
+Key, scales & chords
   scale list                       Available scales (* marks active)
   scale use <name>                 Set global scale override (or just `scale <name>`)
   scale off                        Clear global scale override (off/stop/disable/clear)
   scale show                       Print active override + session pins (show/current/status)
+  root <note|±semis|off>           Live-transpose the key off A (e.g. `root C`, `root -2`, `root off`)
+  chords [pop|list|off|A E F#m D]  Cycle the room through a chord progression (`chords every 8` sets pace)
   preset reverb <0..2>             Set active preset reverb_scale multiplier and regenerate
 
 MIDI songs (melody source for events)
@@ -1264,6 +1266,86 @@ def cmd_scale(args):
     print(f"unknown scale subcommand: {sub}")
 
 
+# ---------- root note (live transpose off A) ----------
+
+_PCS = {"C":0,"C#":1,"DB":1,"D":2,"D#":3,"EB":3,"E":4,"F":5,"F#":6,"GB":6,
+        "G":7,"G#":8,"AB":8,"A":9,"A#":10,"BB":10,"B":11}
+_NOTES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
+
+def _clamp_root(v):
+    try: n = int(round(float(v)))
+    except (TypeError, ValueError): return 0
+    return max(-6, min(6, n))
+
+def cmd_root(args):
+    """Set the global live transpose off A (the rendered A=432 root). Re-keys
+    every voice (and the drone) instantly, no re-render. The web 🎤 Listen mode
+    drives this from your mic. Usage: claudio root <note|±semitones|off|show>."""
+    if not args or args[0] in ("show", "status", "current"):
+        off = _clamp_root(load_config().get("root_offset", 0))
+        print(f"root: {_NOTES[(9 + off) % 12]}  ({'+' if off >= 0 else ''}{off} from A)")
+        return
+    sub = args[0]
+    if sub in ("off", "clear", "reset", "a", "A"):
+        cfg = load_config(); cfg.pop("root_offset", None); save_config(cfg)
+        print("root → A (shipped key)")
+        return
+    key = sub.upper()
+    if key in _PCS:                       # note name → nearest signed offset off A
+        off = _clamp_root(((_PCS[key] - 9 + 6) % 12) - 6)
+    else:
+        try: off = _clamp_root(int(sub))  # raw semitone offset
+        except ValueError:
+            print(f"unknown root '{sub}'. give a note (C, F#, Bb), a ±semitone offset, or 'off'.")
+            return
+    cfg = load_config(); cfg["root_offset"] = off; save_config(cfg)
+    print(f"root → {_NOTES[(9 + off) % 12]}  ({'+' if off >= 0 else ''}{off} from A)")
+
+
+# ---------- chord progressions ----------
+
+def cmd_chords(args):
+    """Cycle the room through a chord progression (wall-clock, no daemon).
+    Usage: claudio chords [show|list|off|use <preset>|every <sec>|<chords…>]"""
+    import event as _ev
+    def _show():
+        prog = load_config().get("progression") or {}
+        if not prog.get("enabled") or not prog.get("steps"):
+            print("chords: off"); return
+        i, label = _ev.chord_step(prog)
+        steps = prog["steps"]
+        line = "  ".join(f"[{s}]" if j == i else f" {s} " for j, s in enumerate(steps))
+        print(f"chords: {line}   (every {prog.get('step_s', 8):g}s, now: {label})")
+    if not args or args[0] in ("show", "status", "current"):
+        _show(); return
+    sub = args[0]
+    if sub in ("list", "ls"):
+        for name, steps in _ev.PROGRESSIONS.items():
+            print(f"  {name:<12} {' – '.join(steps)}")
+        print(f"  chords available for custom: {', '.join(sorted(_ev.CHORDS))}")
+        return
+    cfg = load_config(); prog = cfg.get("progression") or {}
+    if sub in ("off", "stop", "disable"):
+        prog["enabled"] = False
+        cfg["progression"] = prog; save_config(cfg); print("chords off"); return
+    if sub == "every" and len(args) > 1:
+        try: prog["step_s"] = max(2.0, min(60.0, float(args[1])))
+        except ValueError: print("usage: claudio chords every <seconds>"); return
+        cfg["progression"] = prog; save_config(cfg)
+        print(f"chord length → {prog['step_s']:g}s"); _show(); return
+    if sub == "use" and len(args) > 1: sub, args = args[1], args[1:]
+    if sub in _ev.PROGRESSIONS:
+        prog.update(preset=sub, steps=list(_ev.PROGRESSIONS[sub]), enabled=True)
+        cfg["progression"] = prog; save_config(cfg); _show(); return
+    # custom: a list of chord names, e.g. `claudio chords A E F#m D`
+    steps = [a for a in args if a in _ev.CHORDS]
+    if len(steps) >= 2:
+        prog.update(preset="custom", steps=steps, enabled=True)
+        cfg["progression"] = prog; save_config(cfg); _show(); return
+    print(f"unknown progression '{sub}'. presets: {', '.join(_ev.PROGRESSIONS)}; "
+          f"or give 2+ chords from: {', '.join(sorted(_ev.CHORDS))}")
+
+
 # ---------- preset reverb scale ----------
 
 def cmd_preset_reverb(args):
@@ -1646,6 +1728,8 @@ def main(argv):
     elif cmd == "audition":             cmd_audition(args)
     elif cmd in ("status-line", "statusline"): cmd_status_line(args)
     elif cmd == "scale":                cmd_scale(args)
+    elif cmd in ("root", "key"):        cmd_root(args)
+    elif cmd in ("chords", "progression", "prog"): cmd_chords(args)
     elif cmd == "event":                cmd_event(args)
     elif cmd in ("song", "songs"):      cmd_song(args)
     elif cmd in ("play", "jukebox"):    cmd_play(args)

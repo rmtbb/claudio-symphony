@@ -85,6 +85,14 @@ def _save(p, d):
     tmp.rename(p)
 
 def read_config(): return _load(CONFIG, {})
+
+def root_offset(cfg=None):
+    """Global live transpose in semitones off A (the rendered root), clamped to
+    a tritone. Set by the web mic-jam mode / `claudio root`; 0 = shipped A=432."""
+    if cfg is None: cfg = read_config()
+    try: n = int(round(float(cfg.get("root_offset", 0) or 0)))
+    except (TypeError, ValueError): return 0
+    return max(-6, min(6, n))
 def load_sessions(): return _load(SESSIONS_FILE, {"active": {}})
 def save_sessions(d): _save(SESSIONS_FILE, d)
 def load_rules(): return _load(RULES_FILE, {"rules": []})
@@ -265,6 +273,51 @@ SCALES = {
     "A_yo":            ([9, 11, 2, 4, 7],                [9, 4]),    # A B D E G — Japanese major-pent
     "A_hijaz":         ([9, 10, 1, 2, 4, 5, 7],          [9, 4]),    # A Bb C# D E F G — flamenco
 }
+
+
+# Chord library for progressions — A-rooted spellings of the common chords.
+# label -> (pcs, root_pc). Triads only; the Markov picker supplies the color.
+CHORDS = {
+    "A":   ([9, 1, 4], 9),    "Am":  ([9, 0, 4], 9),
+    "B":   ([11, 3, 6], 11),  "Bm":  ([11, 2, 6], 11),
+    "C":   ([0, 4, 7], 0),    "C#m": ([1, 4, 8], 1),
+    "D":   ([2, 6, 9], 2),    "Dm":  ([2, 5, 9], 2),
+    "E":   ([4, 8, 11], 4),   "Em":  ([4, 7, 11], 4),
+    "F":   ([5, 9, 0], 5),    "F#m": ([6, 9, 1], 6),
+    "G":   ([7, 11, 2], 7),
+}
+# Shipped progressions (all in A so they sit on the rendered samples; the live
+# root_offset transposes the whole cycle if the mic-jam has re-keyed the room).
+PROGRESSIONS = {
+    "pop":        ["A", "E", "F#m", "D"],                       # I–V–vi–IV
+    "doo_wop":    ["A", "F#m", "D", "E"],                       # I–vi–IV–V
+    "andalusian": ["Am", "G", "F", "E"],                        # i–♭VII–♭VI–V
+    "canon":      ["A", "E", "F#m", "C#m", "D", "A", "D", "E"], # Pachelbel
+    "lofi":       ["Bm", "E", "A", "F#m"],                      # ii–V–I–vi
+}
+
+def chord_step(prog, now=None):
+    """Which step of the progression is live right now. Stateless: the chord
+    clock is pure wall-time math, so every hook process (and the browser)
+    agrees on the current chord with no daemon and nothing to drift."""
+    steps = prog.get("steps") or []
+    if not steps: return None, None
+    step_s = max(2.0, float(prog.get("step_s", 8) or 8))
+    i = int((now if now is not None else time.time()) // step_s) % len(steps)
+    return i, steps[i]
+
+def resolve_chord():
+    """Returns (pcs, roots, label) for the chord that's live right now, or
+    (None, None, None) when no progression is enabled. Roots = chord root +
+    fifth so phrase landings stay chordal but not monotonous."""
+    prog = read_config().get("progression") or {}
+    if not prog.get("enabled"): return None, None, None
+    _, label = chord_step(prog)
+    if not label: return None, None, None
+    c = CHORDS.get(label)
+    if not c: return None, None, None
+    pcs, root = c
+    return list(pcs), [root, (root + 7) % 12], label
 
 
 def resolve_scale(session_id):
@@ -622,9 +675,15 @@ def trigger(preset_name, preset, voice, song_name=None, quant_override=None,
         scale_override_roots=scale_override_roots,
     )
     if sample is None: return
-    cfg_master = read_config().get("master_gain")
+    cfg = read_config()
+    cfg_master = cfg.get("master_gain")
     master = float(cfg_master if cfg_master is not None
                    else preset.get("master_gain", 0.5))
+    # Live root transpose: the web mic-jam mode (or `claudio root`) writes a
+    # global semitone offset off A. We fold it into every note's shift so the
+    # whole room re-keys instantly with no re-render. Clamped to a tritone so a
+    # detected root never warps a sample by more than ±6 semitones.
+    shift += root_offset(cfg)
     base_lin = float(cfg.get("gain", 0.5)) * master
     pressure_lin = 10 ** (pressure_db / 20.0)
     delay = song_mod.quant_delay_for(quant_override) if quant_override is not None else song_mod.quant_delay()
@@ -738,6 +797,14 @@ def handle(payload):
     # forking the whole preset. Filters pitched bag, overrides phrase_roots
     # and scale_pitches. Resolution: session pin > config-wide > none.
     override_pcs, override_roots, override_name = resolve_scale(session)
+
+    # Chord progression: when enabled, the live chord's tones supersede the
+    # scale override — same machinery (pitch-class filter + phrase roots), the
+    # pool just moves with the wall-clock chord cycle. The drone keeps its A
+    # pedal underneath, which is exactly the ambient move.
+    ch_pcs, ch_roots, _ch = resolve_chord()
+    if ch_pcs:
+        override_pcs, override_roots = ch_pcs, ch_roots
 
     # Per-event effect block: preset.json events.<name> may carry an
     # `effect: {delay: {ms, feedback, count}}` block, applied at trigger time.

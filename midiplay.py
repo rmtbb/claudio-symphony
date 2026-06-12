@@ -78,6 +78,26 @@ def event_voice(preset, event_name):
     return spec.get("default")
 
 
+def token_voice(token, preset):
+    """Mapping values are an event name, a direct voice pick 'voice:<name>',
+    or a cross-preset pick 'voice:<preset>/<voice>' (any sound in the library —
+    the jukebox isn't restricted to the performing preset). Returns
+    (event_name_or_None, voice_or_None, src_preset_name_or_None); src is None
+    when the voice lives in the performing preset itself."""
+    if not token or token == "__none__":
+        return None, None, None
+    if token.startswith("voice:"):
+        v = token[6:]
+        if "/" in v:
+            src, vname = v.split("/", 1)
+            sp = ev.load_preset(src)
+            if sp and vname in (sp.get("voices") or {}):
+                return None, vname, src
+            return None, None, None
+        return None, (v if v in (preset.get("voices") or {}) else None), None
+    return token, event_voice(preset, token), None
+
+
 def mappable_events(preset):
     """Events that actually resolve to a voice, in performance-priority order,
     then any extra events the preset defines that we didn't list."""
@@ -105,11 +125,96 @@ def auto_map(song, preset):
     return {ch: events[i % len(events)] for i, ch in enumerate(chans)}
 
 
+def voice_features(preset_name, preset):
+    """Cheap, deterministic character analysis of each voice, for display and
+    for smart_map. Melodic = samples carry midi tags (their mean gives the
+    register, their span the reach); percussive = untagged and short. Reads at
+    most 4 wav headers per voice — no audio decoding."""
+    import wave
+    out = []
+    for vname, cfg in (preset.get("voices") or {}).items():
+        samples = ev.list_samples(preset_name, cfg.get("dir", vname))
+        if not samples:
+            continue
+        midis = [m for m in (ev._parse_midi(s.name) for s in samples) if m is not None]
+        durs = []
+        for s in samples[:4]:
+            try:
+                with wave.open(str(s), "rb") as w:
+                    durs.append(w.getnframes() / float(w.getframerate() or 44100))
+            except Exception:
+                pass
+        avg_dur = sum(durs) / len(durs) if durs else 0.0
+        pitched = bool(midis)
+        anchor = cfg.get("tonal_anchor_midi")
+        reg = (sum(midis) / len(midis)) if midis else (float(anchor) if anchor is not None else None)
+        out.append({
+            "name": vname,
+            "pitched": pitched,
+            "register_midi": round(reg, 1) if reg is not None else None,
+            "register": _register_label(reg),
+            "span": (max(midis) - min(midis)) if len(midis) > 1 else 0,
+            "avg_dur": round(avg_dur, 2),
+            # 0 = sustained/melodic … 1 = dry hit. Unpitched starts at .6;
+            # shortness adds the rest, so a kalimba reads ~.2, a woodblock ~1.
+            "percussive": round(max(0.0, min(1.0,
+                (0.0 if pitched else 0.6) + max(0.0, (1.2 - avg_dur)) / 1.2 * 0.4)), 2),
+        })
+    return out
+
+
+def smart_map(song, preset, preset_name):
+    """Arrange tracks onto sonically-fitting voices: the GM drum channel (10,
+    i.e. ch 9) takes the most percussive voice; melodic tracks take pitched
+    voices whose sample register sits nearest the track's median note, with
+    wide-spanned voices favoured for the lead. Prefers an EVENT token when the
+    chosen voice is some event's default (so the room still blooms), else maps
+    the voice directly. Returns {channel: token}."""
+    feats = voice_features(preset_name, preset)
+    if not feats:
+        return {}
+    by_ch = {}
+    for n in song.get("notes") or []:
+        by_ch.setdefault(n["channel"], []).append(n["midi"])
+    chans = [ch for ch, _, _ in song_mod.channel_summary(song)]
+    lead = song_mod.lead_channel(song)
+    if lead in chans:
+        chans.remove(lead); chans.insert(0, lead)
+    v2e = {}
+    for evname in mappable_events(preset):
+        v = event_voice(preset, evname)
+        if v and v not in v2e:
+            v2e[v] = evname
+    used, out = set(), {}
+    for ch in chans:
+        ms = sorted(by_ch.get(ch) or [])
+        if not ms:
+            continue
+        med = ms[len(ms) // 2]
+        drum = (ch == 9)                       # GM percussion channel
+        def score(f):
+            s = 0.0
+            if drum:
+                s += f["percussive"] * 3.0
+            else:
+                if f["pitched"]: s += 1.5
+                if f["register_midi"] is not None:
+                    s -= abs(f["register_midi"] - med) / 12.0
+                s += min(f["span"], 24) / 24.0
+            if f["name"] in used:
+                s -= 2.2                       # spread across voices; reuse only when clearly best
+            return s
+        best = max(feats, key=score)
+        used.add(best["name"])
+        out[ch] = v2e.get(best["name"], "voice:" + best["name"])
+    return out
+
+
 def plan(song_name, preset_name, mapping=None):
     """Describe how `song_name` would be performed by `preset_name`: per-channel
-    note counts / register and the event+voice each channel maps to. Used by the
-    web UI to show (and let the user edit) the track↔event correlation before
-    pressing play."""
+    stats (notes, register, range, density, drum flag) and the event-or-voice
+    each channel maps to, plus the preset's voice catalog and a smart-arranged
+    suggestion. Used by the web UI to show and edit the mapping before play."""
     song = song_mod.load_song(song_name)
     preset = ev.load_preset(preset_name)
     if not song or not preset:
@@ -118,19 +223,31 @@ def plan(song_name, preset_name, mapping=None):
     amap = auto_map(song, preset)
     mapping = mapping or {}
     lead = song_mod.lead_channel(song)
+    duration = _song_duration(song)
+    by_ch = {}
+    for n in song.get("notes") or []:
+        by_ch.setdefault(n["channel"], []).append(n["midi"])
     rows = []
     for ch, count, median in summary:
-        evname = mapping.get(str(ch), mapping.get(ch, amap.get(ch)))
-        if evname in ("__none__", ""):
-            evname = None
+        token = mapping.get(str(ch), mapping.get(ch, amap.get(ch)))
+        if token in ("__none__", ""):
+            token = None
+        evname, voice, src = token_voice(token, preset) if token else (None, None, None)
+        if voice and src:
+            voice = f"{src}/{voice}"
+        ms = by_ch.get(ch) or []
         rows.append({
             "channel": ch,
             "notes": count,
             "median_midi": median,
             "register": _register_label(median),
+            "lo": min(ms) if ms else None, "hi": max(ms) if ms else None,
+            "density": round(count / duration, 2) if duration else 0,
+            "is_drum": ch == 9,
             "is_lead": ch == lead,
+            "token": token,
             "event": evname,
-            "voice": event_voice(preset, evname) if evname else None,
+            "voice": voice,
         })
     return {
         "song": song_name,
@@ -138,8 +255,10 @@ def plan(song_name, preset_name, mapping=None):
         "bpm": song.get("bpm", 120.0),
         "total_notes": len(song.get("notes") or []),
         "events": mappable_events(preset),
+        "voices": voice_features(preset_name, preset),
+        "smart": {str(k): v for k, v in smart_map(song, preset, preset_name).items()},
         "channels": rows,
-        "duration": _song_duration(song),
+        "duration": duration,
     }
 
 
@@ -166,15 +285,20 @@ def _song_duration(song, bpm=None):
 
 # ---------- firing one note ----------
 
-def _fire(preset_name, preset, master, event_name, voice, target_midi, velocity):
+def _fire(preset_name, preset, master, event_name, voice, target_midi, velocity,
+          src_name=None, src_preset=None):
     """Select a sample for `voice` landing on `target_midi`, play it through
     event.play() (which also feeds the recording timeline), and touch the
-    activity markers so the UI blooms. Velocity scales gain subtly."""
-    voices = preset.get("voices", {})
+    activity markers so the UI blooms. Velocity scales gain subtly. When the
+    voice was picked from another preset (src_name/src_preset), its config and
+    samples come from there; markers still land on the performing preset."""
+    vsrc_name = src_name or preset_name
+    vsrc = src_preset or preset
+    voices = vsrc.get("voices", {})
     cfg = voices.get(voice)
     if cfg is None:
         return
-    samples = ev.list_samples(preset_name, cfg.get("dir", voice))
+    samples = ev.list_samples(vsrc_name, cfg.get("dir", voice))
     if not samples:
         return
 
@@ -212,7 +336,8 @@ def _fire(preset_name, preset, master, event_name, voice, target_midi, velocity)
         sd = ev.preset_state_dir(preset_name)
         now = str(time.time())
         (sd / f"last-{voice}.txt").write_text(now)
-        (sd / f"evt-{event_name}.txt").write_text(now)
+        if event_name:                     # direct voice picks have no event to bloom
+            (sd / f"evt-{event_name}.txt").write_text(now)
     except Exception:
         pass
 
@@ -305,11 +430,20 @@ def perform(song_name, preset_name=None, bpm=None, tempo=1.0, loop=False,
     master = _perform_master(preset)
     sched = [(t, (evname, midi, vel)) for (t, _ch, evname, midi, vel) in raw]
 
+    # preload any cross-preset sources referenced by the mapping (one read each)
+    srcs = {}
+    for tok in set(full_map.values()):
+        if tok and tok.startswith("voice:") and "/" in tok:
+            src = tok[6:].split("/", 1)[0]
+            if src not in srcs:
+                srcs[src] = ev.load_preset(src)
+
     def fire(item):
-        evname, midi, vel = item
-        voice = event_voice(preset, evname)   # re-read: preset may be edited mid-play
+        token, midi, vel = item
+        evname, voice, src = token_voice(token, preset)  # event | voice | preset/voice
         if voice:
-            _fire(preset_name, preset, master, evname, voice, midi, vel)
+            _fire(preset_name, preset, master, evname, voice, midi, vel,
+                  src_name=src, src_preset=srcs.get(src) if src else None)
 
     _run_loop(sched, fire, on_tick=on_tick, _stop=_stop, loop=loop)
     return True

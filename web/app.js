@@ -12,6 +12,11 @@ let FOCUS = { kind: 'global' };        // {kind:'global'} | {kind:'session', id,
 let lastVoiceTs = {}, lastEventTs = {};
 let EVT_COUNTS = {}, SORT_BY_FREQ = false;   // event fire-frequency + opt-in "most fired" sort
 let TIMELINES = {}, REPLAY = { active: false };   // per-session mini-tracks + live replay state
+// Mic-jam: listen to the room and re-key Claudio to the loudest steady note.
+const MIC = { on: false, ctx: null, stream: null, analyser: null, buf: null, raf: 0,
+  lastFire: 0,        // perf.now() of Claudio's most recent note (gap-aware gating)
+  hist: [], lockedPc: null, lastSent: 0, lastShownPc: null, prevOffset: 0,
+  src: null, mon: null };   // mic source node + live monitor FX chain (headphone mode)
 const cssEsc = (s) => (window.CSS && CSS.escape) ? CSS.escape(s) : s;
 
 const toast = (() => { const el = $('#toast'); let t;
@@ -28,6 +33,7 @@ function editPreset() {
 
 /* ---------------- boot ---------------- */
 async function boot() {
+  applyTheme();           // restore per-browser accent before anything paints
   await loadState();
   wireGlobal();
   setFocus({ kind: 'global' });
@@ -108,12 +114,10 @@ function paintReplay() {
     btn.textContent = me ? '■' : '▶';
     btn.classList.toggle('on', me);
     el.classList.toggle('replaying', me);
-    const head = el.querySelector('.si-head');
-    if (head) {
-      if (me && REPLAY.progress && REPLAY.progress.total) {
-        head.hidden = false;
-        head.style.left = Math.max(0, Math.min(100, 100 * (REPLAY.progress.idx || 0) / REPLAY.progress.total)) + '%';
-      } else head.hidden = true;
+    if (!me) {            // playhead + lit bars belong to animReplay; clear strays
+      const head = el.querySelector('.si-head'); if (head) head.hidden = true;
+      const sp = el.querySelector('.si-spark');
+      if (sp && sp._pl) { sp.querySelectorAll('i.played').forEach(b => b.classList.remove('played')); sp._pl = 0; }
     }
   });
   // keep the focused-session strip button in sync too
@@ -123,6 +127,36 @@ function paintReplay() {
     mb.textContent = me ? '■ stop' : '▶ replay';
     mb.classList.toggle('on', me);
   }
+}
+
+/* the playhead sweeps continuously: between polls we dead-reckon from the last
+   known elapsed time at the true playback rate, and ease in each correction —
+   no more 280ms staircase. Bars light up (sage) as the head passes them. */
+let REPLAY_RAF = 0;
+function animReplayStart() { if (!REPLAY_RAF && REPLAY.active) REPLAY_RAF = requestAnimationFrame(animReplay); }
+function animReplay() {
+  REPLAY_RAF = 0;
+  const el = REPLAY.session ? $(`.srail-item[data-session="${cssEsc(REPLAY.session)}"]`) : null;
+  const spark = el && el.querySelector('.si-spark');
+  if (!REPLAY.active) {
+    if (spark) { spark.querySelectorAll('i.played').forEach(b => b.classList.remove('played')); spark._pl = 0;
+      const h = spark.querySelector('.si-head'); if (h) h.hidden = true; }
+    REPLAY.shown = 0; return;
+  }
+  if (spark) {
+    // truth: time-based when the backend gave us duration, idx-based otherwise
+    const est = REPLAY.duration > 0
+      ? Math.min(1, (REPLAY.elapsed + (performance.now() - REPLAY.at) / 1000) / REPLAY.duration)
+      : REPLAY.target;
+    REPLAY.shown = (REPLAY.shown || 0) + (est - (REPLAY.shown || 0)) * 0.15;
+    if (est >= 0.999 && REPLAY.shown > 0.99) REPLAY.shown = 1;
+    const head = spark.querySelector('.si-head');
+    if (head) { head.hidden = false; head.style.left = (REPLAY.shown * 100).toFixed(2) + '%'; }
+    const bars = spark.querySelectorAll('i');
+    const k = Math.floor(REPLAY.shown * bars.length);
+    if (spark._pl !== k) { bars.forEach((b, i) => b.classList.toggle('played', i < k)); spark._pl = k; }
+  }
+  REPLAY_RAF = requestAnimationFrame(animReplay);
 }
 
 function setFocus(focus) {
@@ -251,17 +285,26 @@ async function renamePreset(name) {
   toast(`renamed → <span class="g">${r.name}</span>`);
 }
 
-/* ---------------- swap a voice's sound ---------------- */
-let SWAP = null;
-async function openSwap(voice) {
-  SWAP = { preset: editPreset(), voice };
-  $('#swapTitle').textContent = `Replace the sound of “${voice}”`;
+/* ---------------- sound picker (swap modal, generalized) ---------------- */
+// One palette overlay, two users: "swap this voice's sound" (console) and
+// "pick any sound for this track" (jukebox). PICKCB receives (preset, voice).
+let SWAP = null, PICKCB = null;
+async function openSoundPicker(title, sub, cb) {
+  PICKCB = cb;
+  $('#swapTitle').textContent = title;
+  const subEl = $('#swap .builder-sub'); if (subEl) subEl.textContent = sub;
   $('#swap').hidden = false;
   if (!BANK) { try { BANK = (await api.get('/api/palette')).palette; } catch (e) { BANK = []; } }
   $('#swapSearch').value = ''; renderSwapPalette('');
   setTimeout(() => $('#swapSearch').focus(), 50);
 }
-function closeSwap() { $('#swap').hidden = true; SWAP = null; }
+function openSwap(voice) {
+  SWAP = { preset: editPreset(), voice };
+  openSoundPicker(`Replace the sound of “${voice}”`,
+    "Pick a new sound — keeps this voice's level, echo and event mappings.",
+    (sp, sv) => doSwap(sp, sv));
+}
+function closeSwap() { $('#swap').hidden = true; SWAP = null; PICKCB = null; }
 function renderSwapPalette(filter) {
   const f = (filter || '').trim().toLowerCase();
   const wrap = $('#swapPalette'); wrap.innerHTML = '';
@@ -275,7 +318,7 @@ function renderSwapPalette(filter) {
       const chip = document.createElement('div'); chip.className = 'b-chip';
       chip.innerHTML = `<button class="b-play" title="hear it">▶</button><span class="b-vn">${v.voice}</span><button class="b-use" title="use this sound">use</button>`;
       chip.querySelector('.b-play').onclick = () => api.post('/api/voice/play', { preset: grp.preset, voice: v.voice });
-      chip.querySelector('.b-use').onclick = () => doSwap(grp.preset, v.voice);
+      chip.querySelector('.b-use').onclick = () => { if (PICKCB) PICKCB(grp.preset, v.voice); };
       row.appendChild(chip);
     });
     sec.appendChild(row); wrap.appendChild(sec);
@@ -450,24 +493,26 @@ function renderRecList(s) {
   list.innerHTML = html;
 }
 /* ---------------- help: what can I do here? ---------------- */
-const HELP_ICONS = ['🎛️', '🧭', '🎵', '🎬', '🎹', '🎙️'];
+const HELP_ICONS = ['🎛️', '🧭', '🎵', '🎬', '🎹', '🎙️', '🎧'];
 const WEB_HELP = [
   { heading: 'Presets & sound', items: [
     'Browse 36+ presets, audition any, and set one as the global default.',
-    'Constellation view: each orbiting orb is a voice — click it to hear it.',
-    'Mix tab: per-voice gain, reverb, rate jitter, min-interval, and echo mode.',
+    'Constellation view: each orbiting orb is a voice — click it to hear it and jump to its controls.',
+    'Sounds tab: what plays when (events up top), then every voice\'s gain, reverb, rate and echo below — ✎ on any event jumps to its voice.',
     "Swap any voice's samples for a sound from any other preset.",
     'Build your own preset from sounds across all presets (Browse → Build).'] },
   { heading: 'Routing — who plays where', items: [
     'Left rail lists live Claude sessions; click one to focus and edit it.',
     'Pin a preset, scale, or MIDI song to just one session; Unpin to release.',
-    'Rules tab: path globs auto-select a preset when the cwd matches.',
+    'Setup tab: path-glob rules auto-select a preset when the cwd matches.',
     'Global-default pseudo-session plays when no pin or rule matches.'] },
   { heading: 'Events & music', items: [
-    'Events tab: map each of the 9 hook events to a voice, with by-tool and on-failure overrides.',
+    'Sounds tab: map each of the 9 hook events to a voice, with by-tool and on-failure overrides.',
     'Sort events by fire frequency and reset counters.',
     'Music tab: pick a global scale and a MIDI song to drive melodies (off = Markov).',
-    'Quantize: toggle beat-snap, set BPM and grid (16th/8th/quarter/half).'] },
+    'Chord progression: cycle the room through the four-chord song (or your own changes) — the live chord glows and sweeps toward the next.',
+    'Quantize: toggle beat-snap, set BPM and grid (16th/8th/quarter/half).',
+    '🎤 Listen (top bar): jam with the room — Claudio tunes its key to the loudest steady note your mic hears. Tap to keep it on, or press-and-hold to listen only while held; turning it off restores the previous key.'] },
   { heading: 'Session replay & mini-tracks', items: [
     'Each session shows a sparkline of its event-fire history (heavy-traffic spots).',
     "Play the mini-track to replay that session's timeline through any preset.",
@@ -475,14 +520,23 @@ const WEB_HELP = [
     'Export the timeline as a tiny .score.json to replay elsewhere.'] },
   { heading: 'Jukebox (secret instrument)', items: [
     'Click the gold dot in the logo, or the Music-tab Jukebox button, to open it.',
-    'Pick or import a MIDI; each channel maps to an event → voice.',
-    'Adjust tempo (0.5×–2×) and loop; watch channels pulse as they fire.',
-    'Tip: start Rec first, then Play, to capture the whole performance.'] },
+    'Every track shows its register, note range, count and a density bar; map it to an event (fire counts shown — see what your sessions use most), pick any voice directly, or ⊞ browse every preset\'s sounds.',
+    '▶ on a row previews that sound; ✨ smart arrange matches drums to percussive voices and melodies to voices in the right register. The `studio` preset is a drums/bass/synth kit made for this.',
+    '💾 save as preset copies every mapped sound into a new preset you can use anywhere.',
+    'Pitch comes from the MIDI: pitched voices land exactly on each note; percussive ones bend toward it.',
+    'Adjust tempo (0.5×–2×) and loop; rows pulse as they fire. Tip: start Rec first to capture the whole performance.'] },
   { heading: 'Record & tune', items: [
     'Rec: capture a 15s–5m clip (optional drone bed); clips download as .m4a + .wav.',
-    'Preset tab: master/drone gain, reverb space (hall size), test events, regenerate, reset.',
+    'Setup tab: master/drone gain, preset actions (test, regenerate, reset), directory rules.',
     'Top bar: master volume slider and a global power toggle (mute/unmute).',
-    'Tip button opens crypto donation addresses with QR codes.'] },
+    '⋯ menu → Options: pick your accent color, headphone mode, mic monitor, visual energy.',
+    'Display modes: hover the constellation for the ✦ ◍ ≈ switcher — orbs, still pond, or flowing tides.'] },
+  { heading: 'Headphones & jamming', items: [
+    '🎤 Listen detects what you\'re humming — or the music you\'re playing — and re-keys Claudio to match, live.',
+    'Options → Headphone mode: with Claudio in your ears the mic never hears it, so Listen tracks you continuously.',
+    'Options → Mic monitor: mic passthrough with Claudio\'s reverb + delay on your voice or instrument — actually jam with your Claudio. Headphones only, so it can\'t feed back.',
+    'Add a chord progression (Music tab) and the room cycles changes underneath you while you play.',
+    'Monitor space slider: dry ↔ drenched. Everything stays in this browser — no audio leaves your machine.'] },
 ];
 function openHelp() {
   $('#helpGrid').innerHTML = WEB_HELP.map((s, i) => `
@@ -501,7 +555,10 @@ const EVENT_LABELS = {
   SessionStart: 'session start', SessionEnd: 'session end', PreCompact: 'compaction',
 };
 const JCOLS = ['#e8b25c', '#8ab6d6', '#8fc0a6', '#e58c66', '#ffd98a', '#c98c34', '#9ec9b0', '#d9b07a', '#b39ddb'];
-let JUKE = { song: null, plan: null, map: {}, tempo: 1, loop: false, evVoice: {}, poll: null, playing: false };
+// JUKE.preset = the "sound kit": the preset the performance plays through,
+// independent of the room's active preset (so you can demo a MIDI on the
+// studio drums/bass/synth kit while meadow keeps playing your hooks).
+let JUKE = { song: null, preset: null, plan: null, map: {}, tempo: 1, loop: false, evVoice: {}, poll: null, playing: false };
 
 let VIEW = 'console';
 function setView(view) {
@@ -516,10 +573,21 @@ const openJuke = () => setView('jukebox');     // brand-dot easter egg + Music-t
 const closeJuke = () => setView('console');
 
 async function enterJuke() {
-  $('#jukePreset').textContent = STATE.active;
-  // event → default voice for the active preset (to show what each track will sound like)
+  // sound-kit picker: any preset, defaults to the room's active one
+  if (!JUKE.preset || !(STATE.presets || []).some(p => p.name === JUKE.preset)) JUKE.preset = STATE.active;
+  const kit = $('#jukeKit');
+  kit.innerHTML = (STATE.presets || []).map(p =>
+    `<option value="${p.name}" ${p.name === JUKE.preset ? 'selected' : ''}>${p.name}${p.name === 'studio' ? ' · 🥁 drums/bass/synth' : ''}</option>`).join('');
+  kit.onchange = async () => { JUKE.preset = kit.value; await jukeKitChanged(); toast(`kit → <span class="g">${JUKE.preset}</span>`); };
+  await jukeKitChanged();
+  refreshJukeStatus();
+  if (!JUKE.poll) JUKE.poll = setInterval(refreshJukeStatus, 300);
+}
+
+/* (re)load everything that depends on the chosen kit preset */
+async function jukeKitChanged() {
   try {
-    const d = await api.get('/api/preset?name=' + encodeURIComponent(STATE.active));
+    const d = await api.get('/api/preset?name=' + encodeURIComponent(JUKE.preset));
     JUKE.evVoice = {}; (d.events || []).forEach(e => { JUKE.evVoice[e.event] = e.default; });
   } catch { JUKE.evVoice = {}; }
   const songs = (STATE.music && STATE.music.songs) || [];
@@ -533,43 +601,123 @@ async function enterJuke() {
     sel.value = JUKE.song;
     await loadJukePlan();
   }
-  refreshJukeStatus();
-  if (!JUKE.poll) JUKE.poll = setInterval(refreshJukeStatus, 300);
 }
 function exitJuke() { if (JUKE.poll) { clearInterval(JUKE.poll); JUKE.poll = null; } }
 
 async function loadJukePlan() {
   if (!JUKE.song) return;
-  let p; try { p = await api.get(`/api/midiplay/plan?song=${encodeURIComponent(JUKE.song)}&preset=${encodeURIComponent(STATE.active)}`); } catch { return; }
+  let p; try { p = await api.get(`/api/midiplay/plan?song=${encodeURIComponent(JUKE.song)}&preset=${encodeURIComponent(JUKE.preset)}`); } catch { return; }
   if (!p || p.error) { $('#jukeMap').innerHTML = `<div class="juke-empty">Couldn't read that song.</div>`; return; }
-  JUKE.plan = p; JUKE.map = {};
-  p.channels.forEach(c => { JUKE.map[c.channel] = c.event; });
+  JUKE.plan = p; JUKE.map = {}; JUKE.auto = {};
+  p.channels.forEach(c => { JUKE.map[c.channel] = c.token; JUKE.auto[c.channel] = c.token; });
+  // fire counts: badge the event options so you can see what your sessions use most
+  try { const a = await api.get('/api/activity?name=' + encodeURIComponent(JUKE.preset)); JUKE.counts = a.counts || {}; }
+  catch { JUKE.counts = {}; }
   renderJukeMap();
 }
+
+const NOTE_N = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const noteName = (m) => m == null ? '' : NOTE_N[m % 12] + (Math.floor(m / 12) - 1);
+
+/* what does this token sound like? → {preset, voice} it resolves to.
+   Tokens: event name | 'voice:<name>' | 'voice:<preset>/<voice>' (any sound). */
+function tokenParts(token) {
+  if (!token || token === '__none__') return null;
+  if (token.startsWith('voice:')) {
+    const v = token.slice(6);
+    if (v.includes('/')) { const [p, name] = v.split('/'); return { preset: p, voice: name }; }
+    return { preset: JUKE.preset, voice: v };
+  }
+  const v = JUKE.evVoice[token];
+  return v ? { preset: JUKE.preset, voice: v } : null;
+}
+
 function renderJukeMap() {
   const p = JUKE.plan; if (!p) return;
-  const evOpts = (ev) => p.events.map(e =>
-    `<option value="${e}" ${e === ev ? 'selected' : ''}>${e} · ${EVENT_LABELS[e] || ''}</option>`).join('')
-    + `<option value="__none__" ${!ev ? 'selected' : ''}>— silent —</option>`;
-  $('#jukeMap').innerHTML = `<div class="juke-map-h">${p.total_notes} notes · ${Math.round(p.duration)}s · bpm ${Math.round(p.bpm * JUKE.tempo)}</div>` +
+  const vmeta = {}; (p.voices || []).forEach(v => vmeta[v.name] = v);
+  const vTag = (v) => { const f = vmeta[v]; if (!f) return '';
+    return f.pitched ? `${f.register} · melodic` : `${f.register || '—'} · percussive`; };
+  const cnt = (e) => JUKE.counts && JUKE.counts[e] ? ` ×${JUKE.counts[e]}` : '';
+  const opts = (token) => {
+    const cross = token && token.startsWith('voice:') && token.includes('/');
+    return `${cross ? `<option value="${token}" selected>⊞ ${token.slice(6)}</option>` : ''}
+    <optgroup label="events — the room blooms with the song">
+      ${p.events.map(e => `<option value="${e}" ${e === token ? 'selected' : ''}>${e} → ${JUKE.evVoice[e] || '?'}${cnt(e)}</option>`).join('')}
+    </optgroup>
+    <optgroup label="voices — pick the sound directly">
+      ${(p.voices || []).map(v => `<option value="voice:${v.name}" ${('voice:' + v.name) === token ? 'selected' : ''}>${v.name} · ${vTag(v.name)}</option>`).join('')}
+    </optgroup>
+    <option value="__pick__">⊞ any sound — browse all presets…</option>
+    <option value="__none__" ${!token ? 'selected' : ''}>— silent —</option>`;
+  };
+  const maxN = Math.max(1, ...p.channels.map(c => c.notes));
+  $('#jukeMap').innerHTML =
+    `<div class="juke-map-h">${p.total_notes} notes · ${Math.round(p.duration)}s · bpm ${Math.round(p.bpm * JUKE.tempo)}
+       <span class="juke-arr-btns"><button class="btn sm" id="jukeSmart" title="match percussive tracks to percussive sounds, melodies to melodic voices by register">✨ smart arrange</button>
+       <button class="btn sm ghost" id="jukeAuto" title="back to the default event order">↺ auto</button>
+       <button class="btn sm ghost" id="jukeSave" title="copy every mapped sound into a new preset you can use anywhere">💾 save as preset</button></span></div>` +
     p.channels.map((c, i) => {
-      const ev = JUKE.map[c.channel];
-      const voice = ev && ev !== '__none__' ? (JUKE.evVoice[ev] || '(silent)') : '(silent)';
+      const token = JUKE.map[c.channel];
+      const parts = tokenParts(token);
+      const voice = parts ? parts.voice : null;
       const col = JCOLS[i % JCOLS.length];
-      return `<div class="juke-row" data-ch="${c.channel}" data-event="${ev || ''}">
+      const range = c.lo != null ? `${noteName(c.lo)}–${noteName(c.hi)}` : '';
+      const tags = `${c.is_lead ? '<em>◆lead</em>' : ''}${c.is_drum ? '<em class="drum">🥁drums</em>' : ''}`;
+      return `<div class="juke-row" data-ch="${c.channel}" data-voice="${voice || ''}">
         <span class="juke-ch-dot" style="--jc:${col}"></span>
-        <span class="juke-ch">ch${c.channel}${c.is_lead ? ' <em>◆lead</em>' : ''}</span>
-        <span class="juke-reg">${c.register} · ${c.notes}n</span>
+        <div class="juke-trk">
+          <span class="juke-ch">ch${c.channel} ${tags}</span>
+          <span class="juke-reg">${c.register} ${range} · ${c.notes}n · ${c.density}/s</span>
+          <span class="juke-dens"><i style="width:${Math.round(100 * c.notes / maxN)}%;background:${col}"></i></span>
+        </div>
         <span class="juke-arrow">→</span>
-        <select class="vsel juke-ev" data-ch="${c.channel}">${evOpts(ev)}</select>
-        <span class="juke-voice">♪ <b>${voice}</b></span>
+        <select class="vsel juke-ev" data-ch="${c.channel}">${opts(token)}</select>
+        <button class="juke-prev" data-ch="${c.channel}" title="hear this sound">▶</button>
       </div>`;
     }).join('');
   $$('.juke-ev', $('#jukeMap')).forEach(s => s.onchange = e => {
     const ch = +e.target.dataset.ch, val = e.target.value;
+    if (val === '__pick__') {     // browse every preset's sounds for this track
+      openSoundPicker(`Pick a sound for ch${ch}`, 'Any sound from any preset — ▶ to hear, use to take it.',
+        (sp, sv) => { JUKE.map[ch] = `voice:${sp}/${sv}`; closeSwap(); renderJukeMap(); toast(`ch${ch} → <span class="g">${sp}/${sv}</span>`); });
+      renderJukeMap();            // snap the select back until they pick
+      return;
+    }
     JUKE.map[ch] = val === '__none__' ? null : val;
-    renderJukeMap();   // refresh the voice label
+    renderJukeMap();
   });
+  $$('.juke-prev', $('#jukeMap')).forEach(b => b.onclick = () => {
+    const parts = tokenParts(JUKE.map[+b.dataset.ch]);
+    if (!parts) { toast('this track is silent'); return; }
+    api.post('/api/voice/play', { preset: parts.preset, voice: parts.voice });
+    toast(`♪ <span class="g">${parts.voice}</span>${parts.preset !== JUKE.preset ? ' · ' + parts.preset : ''}`);
+  });
+  $('#jukeSmart').onclick = () => {
+    Object.entries(p.smart || {}).forEach(([ch, tok]) => { JUKE.map[+ch] = tok; });
+    renderJukeMap();
+    toast('✨ arranged — drums → percussive, melodies → matching registers');
+  };
+  $('#jukeAuto').onclick = () => { JUKE.map = { ...JUKE.auto }; renderJukeMap(); toast('back to auto order'); };
+  $('#jukeSave').onclick = jukeSaveKit;
+}
+
+/* save the current jukebox mix as a real preset: every mapped sound (from any
+   preset) gets copied into a new self-contained preset via the same endpoint
+   the builder uses. Use it later like any preset — or jukebox it again. */
+async function jukeSaveKit() {
+  const picks = [], seen = new Set();
+  Object.values(JUKE.map).forEach(tok => {
+    const p = tokenParts(tok); if (!p) return;
+    const key = p.preset + '/' + p.voice;
+    if (!seen.has(key)) { seen.add(key); picks.push({ src_preset: p.preset, src_voice: p.voice }); }
+  });
+  if (!picks.length) { toast('map some sounds first'); return; }
+  const name = prompt(`Save these ${picks.length} sounds as a preset — name it:`);
+  if (!name || !name.trim()) return;
+  const r = await api.post('/api/preset/create', { name: name.trim(), set_active: false, voices: picks });
+  if (!r || !r.ok) { toast((r && r.msg) || 'could not create'); return; }
+  try { const s = await api.get('/api/state'); STATE.presets = s.presets; } catch { }
+  toast(`💾 saved <span class="g">${r.name}</span> · ${(r.voices || picks).length} sounds — in Browse presets`);
 }
 function jukeMapPayload() {
   // send EVERY channel — silent ones as "__none__" so they override the auto-map
@@ -578,7 +726,7 @@ function jukeMapPayload() {
 }
 async function jukePlay() {
   if (!JUKE.song) { toast('import a MIDI first'); return; }
-  const r = await api.post('/api/midiplay/start', { song: JUKE.song, preset: STATE.active, tempo: JUKE.tempo, loop: JUKE.loop, mapping: jukeMapPayload() });
+  const r = await api.post('/api/midiplay/start', { song: JUKE.song, preset: JUKE.preset, tempo: JUKE.tempo, loop: JUKE.loop, mapping: jukeMapPayload() });
   if (r && r.ok) { toast(`🎹 performing <span class="g">${JUKE.song}</span>`); setTimeout(refreshJukeStatus, 250); }
   else toast((r && r.msg) || 'could not start');
 }
@@ -605,9 +753,9 @@ async function refreshJukeStatus() {
   // pulse the row whose event most recently fired (read the same markers the sky uses)
   if (playing && JUKE.plan) {
     try {
-      const a = await api.get('/api/activity?name=' + encodeURIComponent(STATE.active));
+      const a = await api.get('/api/activity?name=' + encodeURIComponent(JUKE.preset));
       $$('.juke-row').forEach(row => {
-        const ev = row.dataset.event; const ts = ev && a.events ? a.events[ev] : 0;
+        const v = row.dataset.voice; const ts = v && a.voices ? a.voices[v] : 0;
         const age = ts ? a.now - ts : 1e9;
         row.classList.toggle('lit', age < 0.5);
         row.style.setProperty('--lit', age < 1.2 ? (1 - age / 1.2).toFixed(2) : 0);
@@ -737,6 +885,18 @@ function renderVoices() {
   });
 }
 
+/* event ↔ voice cross-link: jump from an event row (or a constellation orb)
+   to that voice's controls in the rack below — scroll there and flash it */
+function scrollFlashVoice(name) {
+  if (!name || name === '__none__') return;
+  const sp = $('.tabpanel[data-panel="sounds"]'); if (!sp || sp.hidden) return;
+  const row = $(`.vrow[data-voice="${cssEsc(name)}"]`); if (!row) return;
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  row.classList.remove('flash'); void row.offsetWidth;    // restart the animation
+  row.classList.add('flash');
+  setTimeout(() => row.classList.remove('flash'), 1700);
+}
+
 function playMapped(row, label) {
   const sel = row.querySelector('select.vsel');
   const voice = sel ? sel.value : null;
@@ -764,23 +924,26 @@ function renderEvents() {
   evs.forEach(ev => {
     const g = document.createElement('div'); g.className = 'egroup'; g.dataset.event = ev.event;
     const row = document.createElement('div'); row.className = 'erow'; row.dataset.event = ev.event;
-    row.innerHTML = `<span class="edot"></span><span class="elabel" title="click to hear it"><span class="ename">${ev.event}</span><span class="ecount" data-event="${ev.event}"></span></span><select class="vsel ${ev.default==null?'silent':''}">${opts(ev.default)}</select><i class="efreq" data-event="${ev.event}"></i>`;
+    row.innerHTML = `<span class="edot"></span><span class="elabel" title="click to hear it"><span class="ename">${ev.event}</span><span class="ecount" data-event="${ev.event}"></span></span><select class="vsel ${ev.default==null?'silent':''}">${opts(ev.default)}</select><button class="ejump" title="tune this voice ↓">✎</button><i class="efreq" data-event="${ev.event}"></i>`;
     row.querySelector('select').onchange = e => { api.post('/api/map', { preset: P, event: ev.event, key: 'default', voice: e.target.value }); e.target.classList.toggle('silent', e.target.value === '__none__'); };
     row.querySelector('.elabel').onclick = () => playMapped(row, ev.event);
+    row.querySelector('.ejump').onclick = () => scrollFlashVoice(row.querySelector('select').value);
     g.appendChild(row);
     Object.entries(ev.by_tool).forEach(([tool, voice]) => {
       const sr = document.createElement('div'); sr.className = 'erow sub';
-      sr.innerHTML = `<span></span><span class="elabel" title="click to hear it"><span class="ename">${tool}</span><span class="ekey">by-tool</span></span><select class="vsel ${voice==null?'silent':''}">${opts(voice)}</select>`;
+      sr.innerHTML = `<span></span><span class="elabel" title="click to hear it"><span class="ename">${tool}</span><span class="ekey">by-tool</span></span><select class="vsel ${voice==null?'silent':''}">${opts(voice)}</select><button class="ejump" title="tune this voice ↓">✎</button>`;
       sr.querySelector('select').onchange = e => api.post('/api/map', { preset: P, event: ev.event, key: tool, voice: e.target.value });
       sr.querySelector('.elabel').onclick = () => playMapped(sr, tool);
+      sr.querySelector('.ejump').onclick = () => scrollFlashVoice(sr.querySelector('select').value);
       g.appendChild(sr);
     });
     if (ev.on_failure !== null && ev.on_failure !== undefined) {
       const ofv = ev.on_failure === '__none__' ? null : ev.on_failure;
       const sr = document.createElement('div'); sr.className = 'erow sub';
-      sr.innerHTML = `<span></span><span class="elabel" title="click to hear it"><span class="ename">on failure</span><span class="ekey">fallback</span></span><select class="vsel ${ofv==null?'silent':''}">${opts(ofv)}</select>`;
+      sr.innerHTML = `<span></span><span class="elabel" title="click to hear it"><span class="ename">on failure</span><span class="ekey">fallback</span></span><select class="vsel ${ofv==null?'silent':''}">${opts(ofv)}</select><button class="ejump" title="tune this voice ↓">✎</button>`;
       sr.querySelector('select').onchange = e => api.post('/api/map', { preset: P, event: ev.event, key: 'on_failure', voice: e.target.value });
       sr.querySelector('.elabel').onclick = () => playMapped(sr, 'on failure');
+      sr.querySelector('.ejump').onclick = () => scrollFlashVoice(sr.querySelector('select').value);
       g.appendChild(sr);
     }
     wrap.appendChild(g);
@@ -820,13 +983,11 @@ function renderSettings() {
     inp.oninput = () => { el.querySelector('.val').textContent = fmt(inp.value,2); setFill(inp); };
     inp.onchange = () => r.change(+inp.value); wrap.appendChild(el);
   });
-  const rev = document.createElement('div'); rev.className = 'setrow';
-  rev.innerHTML = `<div class="lab">Reverb space<small>hall size · re-renders preset</small></div><div style="display:flex;align-items:center;gap:10px">
-    <input type="range" class="r rev" min="0" max="2" step="0.05" value="${DETAIL.reverb_scale ?? 1}" style="width:130px"><span class="val" style="font:11px/1 var(--mono);color:var(--muted);min-width:34px">${fmt(DETAIL.reverb_scale ?? 1,2)}×</span></div>`;
-  const ri = rev.querySelector('input'); setFill(ri);
-  ri.oninput = () => { rev.querySelector('.val').textContent = fmt(ri.value,2)+'×'; setFill(ri); };
-  ri.onchange = () => { api.post('/api/reverb_scale', { preset: editPreset(), value: +ri.value }); $('#reverbScale').value = ri.value; setFill($('#reverbScale')); $('#reverbScaleVal').textContent = fmt(ri.value,2)+'×'; toast('re-rendering reverb space…'); };
-  wrap.appendChild(rev);
+  // Reverb space lives in the always-visible stage header (the "reverb space"
+  // knob), so it isn't duplicated here — just point people at it.
+  const note = document.createElement('div'); note.className = 'setrow setrow-note';
+  note.innerHTML = `<div class="lab">Reverb space<small>hall size · the “reverb space” knob up in the stage header</small></div>`;
+  wrap.appendChild(note);
 }
 
 /* ---------------- music (global defaults) ---------------- */
@@ -838,6 +999,25 @@ function renderMusic() {
       ${(m.scales||[]).map(s => `<option ${s===m.scale_global?'selected':''}>${s}</option>`).join('')}</select></div>`;
   f.querySelector('#scaleSel').onchange = e => { api.post('/api/scale', { name: e.target.value === '__none__' ? null : e.target.value }); toast(`global scale → ${e.target.value === '__none__' ? 'preset default' : e.target.value}`); };
   sw.appendChild(f);
+
+  // Root note — pick any of the 12; the whole room transposes live (samples
+  // stay rendered at A=432, the shift happens at playback). 🎤 Listen drives
+  // this too, so the select always shows where the room currently sits.
+  const rf = document.createElement('div'); rf.className = 'field';
+  const note = m.root_note || 'A', off = m.root_offset || 0;
+  rf.innerHTML = `<div class="flab">Root note<small>${off ? `re-keyed ${off>0?'+':''}${off} from A · everything transposed live` : 'pick a key — everything transposes live, no re-render'}</small></div>
+    <div class="fctl rootctl">
+      <select class="vsel" id="rootSel" style="min-width:72px">${NOTE_N.map((n, pc) => `<option value="${pc}"${n === note ? ' selected' : ''}>${n}</option>`).join('')}</select>
+      <button class="btn ghost" id="rootReset"${off ? '' : ' disabled'}>↺ A</button></div>`;
+  const setRoot = async (body, label) => {
+    const r = await api.post('/api/root', body);
+    if (STATE.music) { STATE.music.root_offset = r.root_offset; STATE.music.root_note = r.root_note; }
+    renderMusic(); toast(`root → <span class="g">${label || r.root_note}</span>`);
+  };
+  rf.querySelector('#rootSel').onchange = e => setRoot({ pc: +e.target.value });
+  rf.querySelector('#rootReset').onclick = () => setRoot({ clear: true }, 'A');
+  sw.appendChild(rf);
+  renderChords(sw);
 
   const rw = $('#musicRhythm'); rw.innerHTML = '';
   const q = m.quant || { enabled: false, bpm: 120, grid: 0.5 };
@@ -866,6 +1046,81 @@ function renderMusic() {
   jf.querySelector('#jukeOpen').onclick = openJuke;
   rw.appendChild(jf);
 }
+
+/* ---------------- chord progressions ---------------- */
+// A wall-clock cycle of chords the whole room moves through. The chips below
+// glow live (same time math the backend uses, so they're always in sync) and
+// the current chip sweeps a progress underline toward the next change.
+const PROG_PRETTY = { pop: 'Pop (I–V–vi–IV)', doo_wop: 'Doo-wop (I–vi–IV–V)',
+  andalusian: 'Andalusian (i–♭VII–♭VI–V)', canon: 'Canon (Pachelbel)', lofi: 'Lo-fi (ii–V–I–vi)' };
+function normProg(p) { p = p || {}; return { enabled: !!p.enabled, preset: p.preset, steps: p.steps || [], step_s: +(p.step_s || 8) }; }
+
+function renderChords(sw) {
+  const ch = (STATE.music || {}).chords || {}; const prog = normProg(ch.prog);
+  const f = document.createElement('div'); f.className = 'field';
+  const sel = prog.enabled ? (prog.preset || 'custom') : '__off__';
+  f.innerHTML = `<div class="flab">Chord progression<small>${prog.enabled ? 'the whole room moves through these chords, live' : 'cycle the room through chords — the four-chord song, ambient'}</small></div>
+    <div class="fctl"><select class="vsel" id="chordSel">
+      <option value="__off__"${sel === '__off__' ? ' selected' : ''}>— off —</option>
+      ${Object.keys(ch.presets || {}).map(p => `<option value="${p}"${sel === p ? ' selected' : ''}>${PROG_PRETTY[p] || p}</option>`).join('')}
+      <option value="custom"${sel === 'custom' ? ' selected' : ''}>custom…</option></select></div>`;
+  f.querySelector('#chordSel').onchange = async e => {
+    const v = e.target.value; let r;
+    if (v === '__off__') r = await api.post('/api/chords', { off: true });
+    else if (v === 'custom') r = await api.post('/api/chords', { steps: prog.steps.length >= 2 ? prog.steps : ['A', 'D'], enabled: true });
+    else r = await api.post('/api/chords', { preset: v });
+    STATE.music.chords.prog = r.progression; renderMusic();
+    toast(v === '__off__' ? 'chords off' : `chords → <span class="g">${(r.progression.steps || []).join(' · ')}</span>`);
+  };
+  sw.appendChild(f);
+  if (!prog.enabled || !prog.steps.length) return;
+
+  const sendSteps = async (steps) => {
+    const r = await api.post('/api/chords', { steps });
+    STATE.music.chords.prog = r.progression; renderMusic();
+  };
+  const row = document.createElement('div'); row.className = 'chordrow'; row.id = 'chordRow';
+  const custom = prog.preset === 'custom';
+  prog.steps.forEach((label, i) => {
+    const chip = document.createElement('span'); chip.className = 'chord-chip';
+    if (custom) {
+      chip.innerHTML = `<select class="chip-sel" title="change this chord">${(ch.library || []).map(c => `<option${c === label ? ' selected' : ''}>${c}</option>`).join('')}</select>${prog.steps.length > 2 ? '<button class="chip-x" title="remove">×</button>' : ''}`;
+      chip.querySelector('.chip-sel').onchange = e => sendSteps(prog.steps.map((s, j) => j === i ? e.target.value : s));
+      const x = chip.querySelector('.chip-x'); if (x) x.onclick = () => sendSteps(prog.steps.filter((_, j) => j !== i));
+    } else chip.textContent = label;
+    row.appendChild(chip);
+  });
+  if (custom && prog.steps.length < 8) {
+    const add = document.createElement('button'); add.className = 'chip-add'; add.textContent = '+'; add.title = 'add a chord';
+    add.onclick = () => sendSteps([...prog.steps, 'A']);
+    row.appendChild(add);
+  }
+  sw.appendChild(row);
+
+  const sf = document.createElement('div'); sf.className = 'field';
+  sf.innerHTML = `<div class="flab">Chord length<small>seconds per chord · 8s ≈ 4 bars at 120 BPM</small></div>
+    <div class="fctl"><input type="range" class="r" id="chordLen" min="3" max="30" step="1" value="${prog.step_s}">
+    <span class="val" style="font:11px/1 var(--mono);color:var(--muted);min-width:26px" id="chordLenVal">${Math.round(prog.step_s)}s</span></div>`;
+  const cl = sf.querySelector('#chordLen'); setFill(cl);
+  cl.oninput = () => { sf.querySelector('#chordLenVal').textContent = cl.value + 's'; setFill(cl); };
+  cl.onchange = async () => { const r = await api.post('/api/chords', { step_s: +cl.value }); STATE.music.chords.prog = r.progression; };
+  sw.appendChild(sf);
+}
+
+// live chord clock — pure time math, identical to event.py's chord_step()
+setInterval(() => {
+  const row = $('#chordRow'); if (!row) return;
+  const prog = normProg(((STATE.music || {}).chords || {}).prog);
+  if (!prog.enabled || !prog.steps.length) return;
+  const step_s = Math.max(2, prog.step_s);
+  const tsec = Date.now() / 1000;
+  const i = Math.floor(tsec / step_s) % prog.steps.length;
+  const frac = (tsec % step_s) / step_s;
+  [...row.querySelectorAll('.chord-chip')].forEach((c, j) => {
+    c.classList.toggle('on', j === i);
+    if (j === i) c.style.setProperty('--p', (frac * 100).toFixed(1) + '%'); else c.style.removeProperty('--p');
+  });
+}, 250);
 
 /* ---------------- preset actions ---------------- */
 function renderActions() {
@@ -939,6 +1194,37 @@ function wireGlobal() {
   $('#helpBtn').onclick = openHelp;
   $('#helpClose').onclick = closeHelp;
   $('#helpModal').onclick = (e) => { if (e.target.id === 'helpModal') closeHelp(); };
+  $('#optsBtn').onclick = openOpts;
+  $('#optsClose').onclick = closeOpts;
+  $('#optsModal').onclick = (e) => { if (e.target.id === 'optsModal') closeOpts(); };
+  $$('#vizSwitch button').forEach(b => b.onclick = () => setViz(b.dataset.viz));
+  // 🎤 Listen — quick tap latches on/off; press-and-hold = listen only while held
+  const lb = $('#listenBtn'); let pressT = 0, wasOn = false;
+  lb.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    pressT = performance.now(); wasOn = MIC.on;
+    if (!MIC.on) startListen();
+    window.addEventListener('pointerup', () => {
+      const held = performance.now() - pressT;
+      if (held >= MIC_CFG.holdMs) stopListen();   // momentary hold released → off
+      else if (wasOn) stopListen();               // quick tap while on → toggle off
+      // quick tap while off → leave it latched on
+    }, { once: true });
+  });
+  window.addEventListener('beforeunload', () => {
+    // best-effort revert so closing the tab mid-jam doesn't strand the key
+    if (MIC.on && navigator.sendBeacon) {
+      const prev = MIC.prevOffset || 0;
+      navigator.sendBeacon('/api/root', new Blob(
+        [JSON.stringify(prev ? { offset: prev } : { clear: true })], { type: 'application/json' }));
+    }
+  });
+  // overflow "⋯" menu (Help / Tip live in here to keep the bar calm)
+  const ofMenu = $('#ofMenu'), ofBtn = $('#ofBtn');
+  const closeOf = () => { ofMenu.hidden = true; };
+  ofBtn.onclick = (e) => { e.stopPropagation(); ofMenu.hidden = !ofMenu.hidden; };
+  $$('#ofMenu button').forEach(b => b.addEventListener('click', closeOf));
+  document.addEventListener('click', (e) => { if (!$('#overflow').contains(e.target)) closeOf(); });
   // view switch: Console ⇄ Jukebox (top bar). The brand dot is a fun shortcut to Jukebox.
   $$('.vsw').forEach(b => b.onclick = () => setView(b.dataset.view));
   $('.brand .dot').onclick = openJuke;
@@ -949,7 +1235,9 @@ function wireGlobal() {
   $('#jukeImport').onchange = e => { jukeImportFile(e.target.files[0]); e.target.value = ''; };
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    if (!$('#swap').hidden) closeSwap();
+    if (!$('#ofMenu').hidden) $('#ofMenu').hidden = true;
+    else if (!$('#optsModal').hidden) closeOpts();
+    else if (!$('#swap').hidden) closeSwap();
     else if (!$('#builder').hidden) closeBuilder();
     else if (!$('#browser').hidden) closeBrowser();
     else if (!$('#tipModal').hidden) closeTip();
@@ -977,8 +1265,40 @@ async function syncExternal() {
     const t = await api.get('/api/timelines');
     const sig = JSON.stringify(Object.entries(t).map(([k, v]) => [k, v.count]));
     TIMELINES = t;
-    if (sig !== STATE._tlSig) { STATE._tlSig = sig; renderRail(); }
+    if (sig !== STATE._tlSig) { STATE._tlSig = sig; updateSparks(); }
   } catch { }
+}
+
+/* morph sparklines in place — bars ease to new heights (CSS transition) and a
+   session's first mini-track slides in, instead of the whole rail re-rendering
+   with a hard cut. */
+function updateSparks() {
+  $$('.srail-item[data-session]').forEach(el => {
+    const id = el.dataset.session, t = TIMELINES[id];
+    if (!t || !t.count) return;
+    let track = el.querySelector('.si-track');
+    if (!track) {                       // first events for this session
+      const s = (STATE.sessions || []).find(x => x.id === id); if (!s) return;
+      el.insertAdjacentHTML('beforeend', railTrackHTML(s));
+      const rb = el.querySelector('.si-replay');
+      if (rb) rb.onclick = (e) => { e.stopPropagation(); toggleReplay(s); };
+      return;
+    }
+    const spark = track.querySelector('.si-spark'), head = spark.querySelector('.si-head');
+    const bars = [...spark.querySelectorAll('i')];
+    for (let i = bars.length; i < t.density.length; i++) {   // new buckets grow in
+      const b = document.createElement('i'); b.className = 'new';
+      spark.insertBefore(b, head); bars.push(b);
+    }
+    if (bars.length > t.density.length) bars.splice(t.density.length).forEach(b => b.remove());
+    const peak = t.peak || 1;
+    t.density.forEach((v, i) => { const b = bars[i]; if (!b) return;
+      b.style.height = Math.max(8, Math.round(v / peak * 100)) + '%';
+      b.style.opacity = (0.3 + 0.7 * v / peak).toFixed(2);
+    });
+    const ev = track.querySelector('.si-evts'); if (ev) ev.textContent = t.count;
+    track.title = `${t.count} events over ${Math.round(t.duration)}s — click ▶ to replay this session`;
+  });
 }
 
 /* ---------------- live activity ---------------- */
@@ -989,14 +1309,22 @@ async function poll() {
   const live = a.heartbeat && (a.now - a.heartbeat < 12) && !a.muted;
   $('#pulse').classList.toggle('live', !!live);
   $('#pulseTxt').textContent = a.muted ? 'muted' : (live ? 'listening' : 'idle');
-  Object.entries(a.voices).forEach(([vn, ts]) => { if (ts && ts !== lastVoiceTs[vn]) { if (lastVoiceTs[vn] !== undefined) flare(vn); lastVoiceTs[vn] = ts; } paintDot($(`.vrow[data-voice="${cssEsc(vn)}"] .orb`), a.now - ts, true); });
+  Object.entries(a.voices).forEach(([vn, ts]) => { if (ts && ts !== lastVoiceTs[vn]) { if (lastVoiceTs[vn] !== undefined) { flare(vn); MIC.lastFire = performance.now(); } lastVoiceTs[vn] = ts; } paintDot($(`.vrow[data-voice="${cssEsc(vn)}"] .orb`), a.now - ts, true); });
   Object.entries(a.events).forEach(([en, ts]) => { paintDot($(`.erow[data-event="${cssEsc(en)}"] .edot`), a.now - ts, false); });
   if (a.counts) { EVT_COUNTS = a.counts; paintFreq(); maybeSortEvents(); }
-  // live replay state (button + playhead on the rail sparklines)
+  // live replay state (button + playhead on the rail sparklines). The playhead
+  // itself is animated client-side in animReplay — here we just feed it fresh
+  // truth (elapsed/duration when available, event idx/total as fallback).
   if (a.midiplay) {
     const mp = a.midiplay;
-    REPLAY = { active: !!mp.active && mp.kind === 'replay', session: mp.session, progress: mp.progress };
-    paintReplay();
+    const active = !!mp.active && mp.kind === 'replay';
+    const pr = mp.progress || {};
+    if (active && !REPLAY.active) REPLAY.shown = 0;
+    REPLAY.active = active; REPLAY.session = mp.session;
+    REPLAY.elapsed = +pr.elapsed || 0; REPLAY.duration = +mp.duration || 0;
+    REPLAY.target = pr.total ? Math.min(1, (pr.idx || 0) / pr.total) : 0;
+    REPLAY.at = performance.now();
+    paintReplay(); animReplayStart();
   }
   // refresh rail when sessions change (not whole stage)
   if (a.sessions) {
@@ -1031,33 +1359,463 @@ const sky = $('#sky'); const ctx = sky.getContext('2d');
 let nodes = [], rings = [], DPR = Math.min(2, window.devicePixelRatio || 1);
 function resizeSky() { const r = sky.parentElement.getBoundingClientRect(); sky.width = r.width * DPR; sky.height = r.height * DPR; sky.style.width = r.width + 'px'; sky.style.height = r.height + 'px'; layoutNodes(); }
 window.addEventListener('resize', resizeSky);
-function buildNodes() { nodes = (DETAIL ? DETAIL.voices : []).map((v, i) => ({ name: v.name, gain: v.gain, col: PALETTE[i % PALETTE.length], fire: 0, x: 0, y: 0, rad: 0, ang: 0, phase: i * 1.7, base: 5 + Math.min(11, (v.gain || .4) * 13) })); resizeSky(); }
+function buildNodes() { nodes = (DETAIL ? DETAIL.voices : []).map((v, i) => ({ name: v.name, gain: v.gain, col: PALETTE[i % PALETTE.length], fire: 0, x: 0, y: 0, rad: 0, ang: 0, phase: i * 1.7, base: 5 + Math.min(11, (v.gain || .4) * 13),
+  ox: 0, oy: 0, ovx: 0, ovy: 0, pulses: [] })); resizeSky(); }   // ox/oy: spring displacement (burst push) · pulses: tides swells
 let SKY = { cx: 0, cy: 0, sx: 1, sy: 1 };
 function layoutNodes() { const W = sky.width, H = sky.height; SKY.cx = W / 2; SKY.cy = H * 0.5; const GA = Math.PI * (3 - Math.sqrt(5)); const maxR = Math.sqrt(Math.max(1, nodes.length - 1) + 0.6); SKY.sx = (W * 0.40) / maxR; SKY.sy = (H * 0.34) / maxR; nodes.forEach((n, i) => { n.rad = Math.sqrt(i + 0.6); n.ang = i * GA - Math.PI / 2; }); }
-function flare(name) { const n = nodes.find(x => x.name === name); if (!n) return; n.fire = 1; rings.push({ x: n.x, y: n.y, t: performance.now(), col: n.col, r0: n.base * DPR }); }
-sky.addEventListener('click', (e) => { const r = sky.getBoundingClientRect(); const mx = (e.clientX - r.left) * DPR, my = (e.clientY - r.top) * DPR; let hit = null, hd = 1e9; nodes.forEach(n => { const d = Math.hypot(n.x - mx, n.y - my); if (d < hd) { hd = d; hit = n; } }); if (hit && hd < 26 * DPR) { api.post('/api/voice/play', { preset: editPreset(), voice: hit.name }); flare(hit.name); toast(`<span class="g">${hit.name}</span>`); } });
+/* activity energy: every fire feeds it, it decays slowly — the aurora, web
+   brightness and node swell all breathe with how busy the session actually is */
+let MOTES = [], ENERGY = 0, nextGlint = 0;
+function vizLevel() { return Math.min(1, OPTS.energy); }
+function flare(name) { const n = nodes.find(x => x.name === name); if (!n) return;
+  n.fire = 1;
+  ENERGY = Math.min(1, ENERGY + 0.16);
+  if (OPTS.viz === 'tides') {                       // a swell sets off along this voice's ribbon
+    if (n.pulses.length < 6) n.pulses.push({ t0: performance.now() });
+    return;
+  }
+  if (OPTS.viz === 'pond') {                        // one big slow ripple on the water
+    rings.push({ x: n.x, y: n.y, t: performance.now(), col: n.col, r0: 2 * DPR, life: 3600, grow: 120 });
+    return;
+  }
+  rings.push({ x: n.x, y: n.y, t: performance.now(), col: n.col, r0: n.base * DPR });
+  spawnMotes(n, Math.round((2 + Math.random() * 2) * OPTS.energy));
+  // burst push: shove nearby orbs away from the one that just sang; the spring
+  // in positionNodes eases them home, so the constellation moves as one fabric
+  const R = 150 * DPR;
+  nodes.forEach(o => { if (o === n) return; const dx = o.x - n.x, dy = o.y - n.y, d = Math.hypot(dx, dy);
+    if (d < R && d > 1) { const f = (1 - d / R) * 2.4 * DPR; o.ovx += dx / d * f; o.ovy += dy / d * f; } });
+}
+/* motes: tiny embers that drift up off a voice when it sings, then fade */
+function spawnMotes(n, count) {
+  for (let i = 0; i < count && MOTES.length < 90; i++) {
+    const a = Math.random() * Math.PI * 2, sp = (0.10 + Math.random() * 0.28) * DPR;
+    MOTES.push({ x: n.x, y: n.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 0.16 * DPR,
+      t0: performance.now(), life: 2400 + Math.random() * 2400, col: n.col,
+      r: (0.8 + Math.random() * 1.5) * DPR, ph: Math.random() * 7 });
+  }
+}
+function skyHit(e) {
+  const r = sky.getBoundingClientRect(); const mx = (e.clientX - r.left) * DPR, my = (e.clientY - r.top) * DPR;
+  let hit = null, hd = 1e9;
+  if (OPTS.viz === 'tides') {       // ribbons: hit anywhere along a voice's row
+    nodes.forEach(n => { const d = Math.abs((n._ty ?? -1e9) - my); if (d < hd) { hd = d; hit = n; } });
+    const band = Math.max(16 * DPR, sky.height / Math.max(2, nodes.length + 1) * 0.45);
+    return (hit && hd < band) ? hit : null;
+  }
+  nodes.forEach(n => { const d = Math.hypot(n.x - mx, n.y - my); if (d < hd) { hd = d; hit = n; } });
+  return (hit && hd < 26 * DPR) ? hit : null;
+}
+sky.addEventListener('click', (e) => { const hit = skyHit(e); if (hit) { api.post('/api/voice/play', { preset: editPreset(), voice: hit.name }); flare(hit.name); toast(`<span class="g">${hit.name}</span>`); scrollFlashVoice(hit.name); } });
 let hover = null;
-sky.addEventListener('mousemove', (e) => { const r = sky.getBoundingClientRect(); const mx = (e.clientX - r.left) * DPR, my = (e.clientY - r.top) * DPR; let hit = null, hd = 1e9; nodes.forEach(n => { const d = Math.hypot(n.x - mx, n.y - my); if (d < hd) { hd = d; hit = n; } }); hover = (hit && hd < 26 * DPR) ? hit : null; sky.style.cursor = hover ? 'pointer' : 'default'; });
-function startSky() { resizeSky(); requestAnimationFrame(drawSky); }
+sky.addEventListener('mousemove', (e) => { hover = skyHit(e); sky.style.cursor = hover ? 'pointer' : 'default'; });
+const VIZ_HINTS = {
+  orbs:  'live voices · click an orb to hear it · orbs bloom as Claude plays',
+  pond:  'still pond · every sound is a ripple · click a seed to hear it',
+  tides: 'flowing tides · each ribbon is a voice · click one to hear it',
+};
+function setViz(v) {
+  if (!VIZ_HINTS[v]) v = 'orbs';
+  OPTS.viz = v; saveOpts();
+  $$('#vizSwitch button').forEach(b => b.classList.toggle('on', b.dataset.viz === v));
+  $('#constHint').textContent = VIZ_HINTS[v];
+  MOTES = []; rings = [];                              // clean slate between worlds
+  nodes.forEach(n => { n.ox = n.oy = n.ovx = n.ovy = 0; n.pulses = []; });
+}
+function startSky() { resizeSky(); setViz(OPTS.viz); requestAnimationFrame(drawSky); }
 function drawSky(t) {
   ctx.clearRect(0, 0, sky.width, sky.height);
-  const breath = 0.5 + 0.5 * Math.sin(t / 2600); const s = t * 0.001; const amp = 13 * DPR;
+  const breath = 0.5 + 0.5 * Math.sin(t / 2600);
+  ENERGY *= 0.994;                                     // slow exhale (~2s half-life)
+  const lv = vizLevel(), now = performance.now();
+  if (OPTS.viz === 'tides') drawTides(t, now, lv, breath);
+  else { positionNodes(t); if (OPTS.viz === 'pond') drawPond(t, now, lv, breath); else drawOrbs(t, now, lv, breath); }
+  requestAnimationFrame(drawSky);
+}
+
+/* shared drift + spring physics: home position + slow wander, plus the burst-
+   push displacement (ox/oy) that a soft spring always eases back to zero */
+function positionNodes(t) {
+  const s = t * 0.001, amp = 13 * DPR;
   nodes.forEach(n => { const hx = SKY.cx + SKY.sx * n.rad * Math.cos(n.ang); const hy = SKY.cy + SKY.sy * n.rad * Math.sin(n.ang); const a = n.phase;
     const dx = Math.sin(s * 0.43 + a) + 0.55 * Math.sin(s * 0.91 + a * 1.7) + 0.3 * Math.sin(s * 1.7 + a * 2.6);
     const dy = Math.cos(s * 0.39 + a * 1.3) + 0.55 * Math.cos(s * 0.83 + a * 2.1) + 0.3 * Math.cos(s * 1.5 + a * 1.4);
-    n.x = hx + dx * amp * 0.55; n.y = hy + dy * amp * 0.55; });
+    n.ovx += -0.022 * n.ox; n.ovy += -0.022 * n.oy;    // spring home
+    n.ovx *= 0.93; n.ovy *= 0.93;                       // damping: settle in ~1.5s
+    n.ox += n.ovx; n.oy += n.ovy;
+    n.x = hx + dx * amp * 0.55 + n.ox; n.y = hy + dy * amp * 0.55 + n.oy; });
+}
+
+function drawOrbs(t, now, lv, breath) {
+  // aurora: an accent-colored wash that swells with real session activity
+  if (lv > 0) {
+    const aA = (0.025 + 0.14 * ENERGY) * lv * (0.85 + 0.15 * breath);
+    const ag = ctx.createRadialGradient(SKY.cx, SKY.cy * 0.8, 0, SKY.cx, SKY.cy * 0.8, sky.width * 0.46);
+    ag.addColorStop(0, `rgba(${ACCENT.rgb.join(',')},${aA.toFixed(3)})`); ag.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = ag; ctx.fillRect(0, 0, sky.width, sky.height);
+  }
+  // web: brighter when the room is busy; edges flash where a voice just sang
   const WEB = 96 * DPR; ctx.lineWidth = DPR;
-  for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) { const a = nodes[i], b = nodes[j], d = Math.hypot(a.x - b.x, a.y - b.y); if (d < WEB) { ctx.strokeStyle = `rgba(244,225,193,${0.055 * (1 - d / WEB)})`; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); } }
-  const now = performance.now(); rings = rings.filter(r => now - r.t < 1300);
-  rings.forEach(r => { const p = (now - r.t) / 1300, rad = r.r0 + p * 60 * DPR; ctx.strokeStyle = hexA(r.col, (1 - p) * 0.55); ctx.lineWidth = (1 - p) * 2.4 * DPR + 0.3; ctx.beginPath(); ctx.arc(r.x, r.y, rad, 0, 7); ctx.stroke(); });
-  nodes.forEach(n => { n.fire *= 0.92; const twinkle = 0.78 + 0.22 * Math.sin(t * 0.0011 + n.phase * 2.3); const glowPulse = (0.5 + 0.4 * breath) * twinkle; const rr = (n.base + n.fire * 6) * DPR; const isH = hover === n;
+  const webBase = 0.05 + 0.10 * ENERGY * lv;
+  for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) { const a = nodes[i], b = nodes[j], d = Math.hypot(a.x - b.x, a.y - b.y); if (d < WEB) {
+    const al = Math.min(0.5, webBase * (1 - d / WEB) * (1 + (a.fire + b.fire) * 2.2));
+    ctx.strokeStyle = `rgba(244,225,193,${al.toFixed(3)})`; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); } }
+  rings = rings.filter(r => now - r.t < (r.life || 1300));
+  rings.forEach(r => { const L = r.life || 1300, p = (now - r.t) / L, rad = r.r0 + p * (r.grow || 60) * DPR; ctx.strokeStyle = hexA(r.col, (1 - p) * 0.55); ctx.lineWidth = (1 - p) * 2.4 * DPR + 0.3; ctx.beginPath(); ctx.arc(r.x, r.y, rad, 0, 7); ctx.stroke(); });
+  // motes: drifting embers with a slight curl, fading as they rise
+  MOTES = MOTES.filter(m => now - m.t0 < m.life);
+  MOTES.forEach(m => { const p = (now - m.t0) / m.life;
+    m.vx += Math.sin(now * 0.001 + m.ph) * 0.004 * DPR;
+    m.x += m.vx; m.y += m.vy;
+    const al = (1 - p) * 0.7 * lv;
+    ctx.fillStyle = hexA(m.col, al * 0.35); ctx.beginPath(); ctx.arc(m.x, m.y, m.r * 2.6, 0, 7); ctx.fill();
+    ctx.fillStyle = hexA(m.col, al); ctx.beginPath(); ctx.arc(m.x, m.y, m.r, 0, 7); ctx.fill(); });
+  // idle glints: a rare spontaneous shimmer so the sky never reads as frozen
+  if (t > nextGlint) { nextGlint = t + 6000 + Math.random() * 9000;
+    if (lv > 0 && nodes.length && ENERGY < 0.12) { const n = nodes[(Math.random() * nodes.length) | 0]; n.fire = Math.max(n.fire, 0.3); spawnMotes(n, 1); } }
+  nodes.forEach(n => { n.fire *= 0.92; const twinkle = 0.78 + 0.22 * Math.sin(t * 0.0011 + n.phase * 2.3); const glowPulse = (0.5 + 0.4 * breath) * twinkle; const rr = (n.base * (1 + 0.16 * ENERGY * lv) + n.fire * 6) * DPR; const isH = hover === n;
     const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, rr * 4.2); g.addColorStop(0, hexA(n.col, (0.5 + n.fire * 0.5) * (isH ? 1 : glowPulse))); g.addColorStop(1, hexA(n.col, 0));
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(n.x, n.y, rr * 4.2, 0, 7); ctx.fill();
     ctx.fillStyle = hexA(n.col, 0.55 + n.fire * 0.45 + (isH ? .2 : 0)); ctx.beginPath(); ctx.arc(n.x, n.y, rr, 0, 7); ctx.fill();
     ctx.fillStyle = hexA('#fff7e6', 0.5 + n.fire * 0.5); ctx.beginPath(); ctx.arc(n.x, n.y, rr * 0.42, 0, 7); ctx.fill();
     if (isH || n.fire > 0.25) { ctx.font = `${10 * DPR}px 'Space Mono', monospace`; ctx.fillStyle = hexA('#f5ecdd', isH ? 0.95 : n.fire); ctx.textAlign = 'center'; ctx.fillText(n.name, n.x, n.y + rr + 14 * DPR); } });
-  requestAnimationFrame(drawSky);
+}
+
+/* pond: every sound is a ripple on still water. Voices are dim seeds in the
+   same constellation layout; a fire rings out as one big slow circle with a
+   faint inner echo. Silence is the canvas — the rainfall idea, made visible. */
+function drawPond(t, now, lv, breath) {
+  if (lv > 0) {
+    const aA = (0.018 + 0.09 * ENERGY) * lv * (0.85 + 0.15 * breath);
+    const ag = ctx.createRadialGradient(SKY.cx, SKY.cy, 0, SKY.cx, SKY.cy, sky.width * 0.5);
+    ag.addColorStop(0, `rgba(${ACCENT.rgb.join(',')},${aA.toFixed(3)})`); ag.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = ag; ctx.fillRect(0, 0, sky.width, sky.height);
+  }
+  rings = rings.filter(r => now - r.t < (r.life || 1300));
+  rings.forEach(r => { const L = r.life || 1300, p = (now - r.t) / L, rad = r.r0 + p * (r.grow || 60) * DPR;
+    const al = (1 - p) * (1 - p) * 0.5;               // ease-out fade, like water settling
+    ctx.lineWidth = (1 - p) * 2 * DPR + 0.4;
+    ctx.strokeStyle = hexA(r.col, al); ctx.beginPath(); ctx.arc(r.x, r.y, rad, 0, 7); ctx.stroke();
+    ctx.strokeStyle = hexA(r.col, al * 0.45); ctx.beginPath(); ctx.arc(r.x, r.y, rad * 0.78, 0, 7); ctx.stroke(); });
+  if (t > nextGlint) { nextGlint = t + 4500 + Math.random() * 8000;   // a drop falls somewhere
+    if (lv > 0 && nodes.length) { const n = nodes[(Math.random() * nodes.length) | 0];
+      rings.push({ x: n.x, y: n.y, t: now, col: n.col, r0: 2 * DPR, life: 4200, grow: 60 }); } }
+  nodes.forEach(n => { n.fire *= 0.94; const isH = hover === n;
+    ctx.fillStyle = hexA(n.col, 0.22 + n.fire * 0.7 + (isH ? 0.45 : 0));
+    ctx.beginPath(); ctx.arc(n.x, n.y, (2.6 + n.fire * 5) * DPR, 0, 7); ctx.fill();
+    if (isH || n.fire > 0.3) { ctx.font = `${10 * DPR}px 'Space Mono', monospace`; ctx.fillStyle = hexA('#f5ecdd', isH ? 0.95 : n.fire * 0.8); ctx.textAlign = 'center'; ctx.fillText(n.name, n.x, n.y + 16 * DPR); } });
+}
+
+/* tides: each voice is a flowing ribbon stacked down the canvas; when it sings,
+   a luminous swell travels left→right along its line and the ribbon brightens.
+   Sampled every ~5px — silky at a fraction of the orb-web cost. */
+function drawTides(t, now, lv, breath) {
+  const W = sky.width, H = sky.height, N = Math.max(1, nodes.length);
+  const gap = H / (N + 1);
+  const baseA = Math.min(14 * DPR, gap * 0.33) * (0.65 + 0.5 * ENERGY * lv + 0.1 * breath);
+  const step = 5 * DPR;
+  nodes.forEach((n, i) => {
+    n.fire *= 0.94;
+    const yC = gap * (i + 1); n._ty = yC;
+    n.x = W - 30 * DPR; n.y = yC;                      // nominal anchor
+    n.pulses = n.pulses.filter(p => now - p.t0 < 2800);
+    const isH = hover === n;
+    const glow = Math.max(n.fire, n.pulses.length ? 0.5 : 0);
+    for (let pass = glow > 0.12 || isH ? 0 : 1; pass < 2; pass++) {   // halo pass only when alive
+      ctx.beginPath();
+      for (let x = 0; x <= W; x += step) {
+        let y = yC + Math.sin(x * 0.006 / DPR * (1 + i * 0.07) + t * 0.00042 + n.phase) * baseA
+              + Math.sin(x * 0.0023 / DPR + t * 0.00027 + n.phase * 2.1) * baseA * 0.55;
+        n.pulses.forEach(p => { const age = (now - p.t0) / 2800, cx = W * age;
+          const g = Math.exp(-((x - cx) * (x - cx)) / (2 * Math.pow(W * 0.045, 2)));
+          y -= g * baseA * 1.9 * (1 - age); });
+        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      if (pass === 0) { ctx.strokeStyle = hexA(n.col, 0.10 + glow * 0.16); ctx.lineWidth = 5 * DPR; }
+      else { ctx.strokeStyle = hexA(n.col, 0.30 + glow * 0.55 + (isH ? 0.25 : 0)); ctx.lineWidth = 1.5 * DPR; }
+      ctx.stroke();
+    }
+    ctx.font = `${10 * DPR}px 'Space Mono', monospace`; ctx.textAlign = 'right';
+    ctx.fillStyle = hexA(n.col, isH ? 0.95 : 0.34 + glow * 0.5);
+    ctx.fillText(n.name, W - 10 * DPR, yC - 8 * DPR);
+  });
+  ctx.textAlign = 'center';                            // restore for other modes
 }
 function hexA(hex, a) { if (hex[0] !== '#') return hex; const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${Math.max(0, Math.min(1, a))})`; }
+
+/* ---------------- options: appearance · headphone mode · visuals ---------------- */
+// Per-browser preferences (localStorage) — nothing here touches server config.
+// hue: accent hue (null = shipped gold). headphones: output is on headphones, so
+// the mic can't hear Claudio → Listen skips its self-filter gap and reacts faster.
+// monitor: jam-through — your mic, with Claudio-style reverb+delay, in your ears.
+// monMix: monitor wet amount. energy: constellation liveliness (0 calm → 2 lively).
+const OPTS = Object.assign({ hue: null, headphones: false, monitor: false, monMix: 0.5, energy: 1, viz: 'orbs' },
+  JSON.parse(localStorage.getItem('claudio_opts') || '{}'));
+let ACCENT = { gold: '#e8b25c', hi: '#ffd98a', rgb: [232, 178, 92] };
+const THEME_SWATCHES = [
+  { name: 'Gold', hue: null }, { name: 'Ember', hue: 16 }, { name: 'Rose', hue: 345 },
+  { name: 'Violet', hue: 268 }, { name: 'Ocean', hue: 205 }, { name: 'Sage', hue: 150 },
+];
+
+function saveOpts() { localStorage.setItem('claudio_opts', JSON.stringify(OPTS)); }
+
+function hsl2rgb(h, s, l) {
+  const a = s * Math.min(l, 1 - l);
+  const f = n => { const k = (n + h / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+  return [f(0), f(8), f(4)];
+}
+const rgbHex = (r) => '#' + r.map(v => v.toString(16).padStart(2, '0')).join('');
+
+function applyTheme() {
+  const rt = document.documentElement.style;
+  if (OPTS.hue == null) {
+    ['--gold', '--gold-hi', '--gold-deep', '--accent-rgb', '--accent-deep-rgb'].forEach(p => rt.removeProperty(p));
+    ACCENT = { gold: '#e8b25c', hi: '#ffd98a', rgb: [232, 178, 92] };
+  } else {
+    // saturation/lightness chosen so every hue lands with the same warmth as the shipped gold
+    const base = hsl2rgb(OPTS.hue, 0.70, 0.64), hi = hsl2rgb(OPTS.hue, 0.82, 0.77), deep = hsl2rgb(OPTS.hue, 0.62, 0.49);
+    rt.setProperty('--gold', rgbHex(base)); rt.setProperty('--gold-hi', rgbHex(hi)); rt.setProperty('--gold-deep', rgbHex(deep));
+    rt.setProperty('--accent-rgb', base.join(',')); rt.setProperty('--accent-deep-rgb', deep.join(','));
+    ACCENT = { gold: rgbHex(base), hi: rgbHex(hi), rgb: base };
+  }
+  // constellation + favicon follow the accent
+  PALETTE[0] = ACCENT.gold; PALETTE[1] = ACCENT.hi;
+  const fav = document.querySelector('link[rel="icon"]');
+  if (fav) fav.href = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='9' fill='%23${ACCENT.gold.slice(1)}'/%3E%3C/svg%3E`;
+  if (typeof DETAIL !== 'undefined' && DETAIL) buildNodes();
+}
+
+function openOpts() { renderOpts(); $('#optsModal').hidden = false; }
+function closeOpts() { $('#optsModal').hidden = true; }
+
+function renderOpts() {
+  const w = $('#optsBody'); w.innerHTML = '';
+  // — appearance —
+  const ap = document.createElement('div'); ap.className = 'opts-sect';
+  ap.innerHTML = `<h4>Appearance</h4>
+    <div class="opts-row"><div class="lab">Accent<small>recolors the whole console — orbs, glows, sparklines</small></div>
+      <div class="swatches">${THEME_SWATCHES.map(t => {
+        const rgb = t.hue == null ? [232, 178, 92] : hsl2rgb(t.hue, 0.70, 0.64);
+        const on = (t.hue == null && OPTS.hue == null) || t.hue === OPTS.hue;
+        return `<button class="sw${on ? ' on' : ''}" data-hue="${t.hue == null ? '' : t.hue}" title="${t.name}" style="background:${rgbHex(rgb)}"></button>`;
+      }).join('')}</div></div>
+    <div class="opts-row"><div class="lab">Custom hue<small>find your own color</small></div>
+      <div class="huectl"><input type="range" class="r hue" id="optHue" min="0" max="359" step="1" value="${OPTS.hue ?? 37}"></div></div>`;
+  ap.querySelectorAll('.sw').forEach(b => b.onclick = () => {
+    OPTS.hue = b.dataset.hue === '' ? null : +b.dataset.hue;
+    saveOpts(); applyTheme(); renderOpts();
+  });
+  const hu = ap.querySelector('#optHue');
+  hu.oninput = () => { OPTS.hue = +hu.value; applyTheme(); };
+  hu.onchange = () => { saveOpts(); renderOpts(); };
+  w.appendChild(ap);
+
+  // — listening / headphones —
+  const hp = document.createElement('div'); hp.className = 'opts-sect';
+  hp.innerHTML = `<h4>Headphones &amp; jamming</h4>
+    <div class="opts-row"><div class="lab">Headphone mode<small>output is in your ears, so the mic never hears Claudio — 🎤 Listen reacts faster (no self-filter gaps)</small></div>
+      <div class="toggle${OPTS.headphones ? ' on' : ''}" id="optHp"><span class="tk"></span></div></div>
+    <div class="opts-row${OPTS.headphones ? '' : ' dim'}"><div class="lab">Mic monitor<small>jam-through: hear your own mic with Claudio-style reverb + delay while Listen is on · headphones only (feedback-safe)</small></div>
+      <div class="toggle${OPTS.monitor && OPTS.headphones ? ' on' : ''}" id="optMon"><span class="tk"></span></div></div>
+    <div class="opts-row${OPTS.headphones && OPTS.monitor ? '' : ' dim'}"><div class="lab">Monitor space<small>dry ↔ drenched</small></div>
+      <div class="huectl"><input type="range" class="r" id="optMix" min="0" max="1" step="0.05" value="${OPTS.monMix}"></div></div>`;
+  hp.querySelector('#optHp').onclick = () => {
+    OPTS.headphones = !OPTS.headphones;
+    if (!OPTS.headphones) killMonitor();
+    else if (OPTS.monitor && MIC.on) buildMonitor();
+    saveOpts(); renderOpts();
+    toast(OPTS.headphones ? '🎧 headphone mode <span class="g">on</span>' : '🎧 headphone mode off');
+  };
+  hp.querySelector('#optMon').onclick = () => {
+    if (!OPTS.headphones) { toast('🎧 turn on headphone mode first — monitoring through speakers would feed back'); return; }
+    OPTS.monitor = !OPTS.monitor;
+    if (OPTS.monitor && MIC.on) buildMonitor(); else killMonitor();
+    saveOpts(); renderOpts();
+    toast(OPTS.monitor ? '🎙 monitor <span class="g">on</span> — jam away' : '🎙 monitor off');
+  };
+  const mx = hp.querySelector('#optMix');
+  mx.oninput = () => { OPTS.monMix = +mx.value; if (MIC.mon) setMonitorMix(); };
+  mx.onchange = saveOpts;
+  w.appendChild(hp);
+
+  // — visuals —
+  const vz = document.createElement('div'); vz.className = 'opts-sect';
+  vz.innerHTML = `<h4>Constellation</h4>
+    <div class="opts-row"><div class="lab">Visual energy<small>calm ↔ lively — motes, aurora, web glow</small></div>
+      <div class="huectl"><input type="range" class="r" id="optNrg" min="0" max="2" step="0.1" value="${OPTS.energy}"></div></div>`;
+  const nrg = vz.querySelector('#optNrg');
+  nrg.oninput = () => { OPTS.energy = +nrg.value; };
+  nrg.onchange = saveOpts;
+  w.appendChild(vz);
+  w.querySelectorAll('input.r').forEach(setFill);
+}
+
+/* ---------------- mic-jam: sing with the room ---------------- */
+// Listen to the mic, find the loudest *steady* note in the room, and re-key
+// Claudio's whole palette to it — live, no re-render. Dependency-free: a
+// normalized autocorrelation pitch detector (no FFT lib). Gated three ways so
+// Claudio sings *with* the room instead of chasing its own tail:
+//   1. noise gate — ignore quiet input (RMS below a floor)
+//   2. gap-aware  — ignore the ~400ms after Claudio plays a note, so its own
+//                   output (and decaying reverb tail) isn't detected back
+//   3. stability  — a pitch must hold across several frames before it commits
+// (Even if it does hear itself it just re-affirms the current root, so it's
+// self-stable; the debounce stops it chasing harmonics.) A=432 is Claudio's
+// rendered root, so pitch class is measured against 432 Hz.
+const A432 = 432.0;
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+// of/need: rolling-window stability for *committing* a re-key. show: a (looser)
+// threshold for the on-button readout — but it only relabels when one note
+// clearly dominates AND differs from what's shown, so the text stays calm
+// instead of flickering with every raw frame. holdMs: press longer than this =
+// momentary "listen while held"; a quick tap latches on/off.
+const MIC_CFG = { rms: 0.012, gapMs: 420, need: 9, of: 18, minSendMs: 1500, show: 8, holdMs: 350 };
+
+async function startListen() {
+  if (MIC.on) return true;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast('🎤 <span class="g">no mic API</span> — open the console on localhost'); return false; }
+  try {
+    // headphone mode: nothing to echo-cancel (Claudio is in your ears), and EC
+    // mangles music — turn it off for cleaner detection and monitoring.
+    MIC.stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: !OPTS.headphones, noiseSuppression: false, autoGainControl: false } });
+  } catch { toast('🎤 <span class="g">mic blocked</span> — allow microphone access'); return false; }
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  MIC.ctx = new Ctx();
+  MIC.src = MIC.ctx.createMediaStreamSource(MIC.stream);
+  MIC.analyser = MIC.ctx.createAnalyser();
+  MIC.analyser.fftSize = 2048;
+  MIC.src.connect(MIC.analyser);
+  MIC.buf = new Float32Array(MIC.analyser.fftSize);
+  if (OPTS.headphones && OPTS.monitor) buildMonitor();
+  // remember the key we were in, so turning Listen off restores it
+  MIC.prevOffset = (STATE.music && STATE.music.root_offset) || 0;
+  MIC.on = true; MIC.hist = []; MIC.lockedPc = null; MIC.lastShownPc = null;
+  setListenUI(); micLoop();
+  toast('🎤 <span class="g">listening</span> — hum, play, or put on a song');
+  return true;
+}
+
+function stopListen() {
+  if (!MIC.on) return;
+  MIC.on = false;
+  killMonitor();
+  if (MIC.raf) { cancelAnimationFrame(MIC.raf); MIC.raf = 0; }
+  if (MIC.stream) MIC.stream.getTracks().forEach(t => t.stop());
+  if (MIC.ctx) MIC.ctx.close().catch(() => {});
+  MIC.ctx = MIC.stream = MIC.analyser = MIC.src = null; MIC.hist = []; MIC.lastShownPc = null;
+  setListenUI();
+  // revert to whatever the root was before we started jamming
+  const prev = MIC.prevOffset || 0;
+  api.post('/api/root', prev ? { offset: prev } : { clear: true }).then(r => {
+    if (STATE.music) { STATE.music.root_offset = r.root_offset; STATE.music.root_note = r.root_note; }
+    const mp = $('.tabpanel[data-panel="music"]'); if (mp && !mp.hidden) renderMusic();
+    toast(`🎤 off · key → <span class="g">${r.root_note}</span>`);
+  });
+}
+
+function setListenUI(pc) {
+  const b = $('#listenBtn'), lbl = $('#listenLbl'); if (!b || !lbl) return;
+  b.classList.toggle('on', MIC.on);
+  lbl.textContent = !MIC.on ? 'Listen' : (pc == null ? 'listening…' : NOTE_NAMES[pc]);
+}
+
+function micLoop() {
+  if (!MIC.on) return;
+  MIC.raf = requestAnimationFrame(micLoop);
+  const an = MIC.analyser; if (!an) return;
+  an.getFloatTimeDomainData(MIC.buf);
+  let sum = 0; for (let i = 0; i < MIC.buf.length; i++) sum += MIC.buf[i] * MIC.buf[i];
+  const rms = Math.sqrt(sum / MIC.buf.length);
+  // headphone mode: Claudio is in your ears, the mic can't hear it — no gap needed
+  const inGap = OPTS.headphones || (performance.now() - MIC.lastFire) > MIC_CFG.gapMs;
+  let pc = null;
+  if (rms >= MIC_CFG.rms && inGap) {
+    const f = detectPitch(MIC.buf, MIC.ctx.sampleRate);
+    if (f > 0) { const midi = 69 + 12 * Math.log2(f / A432); pc = ((Math.round(midi) % 12) + 12) % 12; }
+  }
+  MIC.hist.push(pc); if (MIC.hist.length > MIC_CFG.of) MIC.hist.shift();
+  const counts = {}; MIC.hist.forEach(p => { if (p != null) counts[p] = (counts[p] || 0) + 1; });
+  let best = null, bestN = 0; for (const k in counts) if (counts[k] > bestN) { bestN = counts[k]; best = +k; }
+  if (best != null && bestN >= MIC_CFG.need) commitRoot(best);
+  // calm readout: only relabel when one note clearly dominates and it changed
+  if (best != null && bestN >= MIC_CFG.show && best !== MIC.lastShownPc) { MIC.lastShownPc = best; setListenUI(best); }
+}
+
+async function commitRoot(pc) {
+  const now = performance.now();
+  if (pc === MIC.lockedPc || now - MIC.lastSent < MIC_CFG.minSendMs) return;
+  MIC.lockedPc = pc; MIC.lastSent = now;
+  const r = await api.post('/api/root', { pc });
+  if (STATE.music) { STATE.music.root_offset = r.root_offset; STATE.music.root_note = r.root_note; }
+  MIC.lastShownPc = pc; setListenUI(pc);
+  const mp = $('.tabpanel[data-panel="music"]');
+  if (mp && !mp.hidden) renderMusic();          // keep the Root-note readout live
+  toast(`🎤 room → <span class="g">${r.root_note}</span>`);
+}
+
+/* live mic monitor (headphone mode only): dry + reverb + feedback delay, all
+   stock Web Audio nodes. The reverb impulse is a synthesized decaying noise
+   burst — the classic trick, no samples to load. Feedback-safe by policy:
+   buildMonitor refuses to run unless headphone mode is on. */
+function buildMonitor() {
+  if (!MIC.ctx || !MIC.src || MIC.mon || !OPTS.headphones) return;
+  const c = MIC.ctx, m = {};
+  m.in = c.createGain();   m.in.gain.value = 0.9;
+  m.dry = c.createGain();  m.dry.gain.value = 0.75;
+  m.wetR = c.createGain(); m.wetD = c.createGain();
+  m.out = c.createGain();  m.out.gain.value = 1.0;
+  m.conv = c.createConvolver(); m.conv.buffer = makeIR(c, 2.6, 2.4);
+  m.delay = c.createDelay(1.5); m.delay.delayTime.value = 0.34;
+  m.fb = c.createGain();   m.fb.gain.value = 0.32;
+  MIC.src.connect(m.in);
+  m.in.connect(m.dry).connect(m.out);
+  m.in.connect(m.conv).connect(m.wetR).connect(m.out);
+  m.in.connect(m.delay); m.delay.connect(m.fb).connect(m.delay);   // feedback loop
+  m.delay.connect(m.wetD).connect(m.out);
+  m.out.connect(c.destination);
+  MIC.mon = m; setMonitorMix();
+}
+function setMonitorMix() {
+  if (!MIC.mon) return;
+  const mix = OPTS.monMix;
+  MIC.mon.wetR.gain.value = 0.85 * mix;
+  MIC.mon.wetD.gain.value = 0.55 * mix;
+}
+function killMonitor() {
+  if (!MIC.mon) return;
+  try { MIC.src && MIC.src.disconnect(MIC.mon.in); } catch {}
+  try { MIC.mon.out.disconnect(); } catch {}
+  MIC.mon = null;
+}
+function makeIR(c, seconds, decay) {
+  const rate = c.sampleRate, len = Math.floor(rate * seconds);
+  const buf = c.createBuffer(2, len, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+  }
+  return buf;
+}
+
+// Normalized autocorrelation (ACF2+ style). Returns the fundamental in Hz, or -1.
+function detectPitch(buf, sr) {
+  const N = buf.length;
+  let r1 = 0, r2 = N - 1; const thres = 0.2;
+  for (let i = 0; i < N / 2; i++) if (Math.abs(buf[i]) < thres) { r1 = i; break; }
+  for (let i = 1; i < N / 2; i++) if (Math.abs(buf[N - i]) < thres) { r2 = N - i; break; }
+  const b = buf.slice(r1, r2), M = b.length; if (M < 32) return -1;
+  const c = new Float32Array(M);
+  for (let lag = 0; lag < M; lag++) { let s = 0; for (let i = 0; i < M - lag; i++) s += b[i] * b[i + lag]; c[lag] = s; }
+  let d = 0; while (d < M - 1 && c[d] > c[d + 1]) d++;          // walk down past lag-0 peak
+  let maxv = -1, maxp = -1; for (let i = d; i < M; i++) if (c[i] > maxv) { maxv = c[i]; maxp = i; }
+  if (maxp <= 0) return -1;
+  const x1 = c[maxp - 1] || 0, x2 = c[maxp], x3 = c[maxp + 1] || 0;   // parabolic interp
+  const a = (x1 + x3 - 2 * x2) / 2, bb = (x3 - x1) / 2;
+  const T = a ? maxp - bb / (2 * a) : maxp;
+  const f = sr / T;
+  return (f >= 50 && f <= 2000) ? f : -1;        // drop sub-bass rumble & hiss
+}
 
 boot();

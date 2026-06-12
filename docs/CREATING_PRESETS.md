@@ -1,6 +1,6 @@
 # Creating presets for Claudio Symphony
 
-A preset is a **room** — a self-contained tonal world that responds to Claude Code hook events with a coherent set of sounds. Four ship in the box (cathedral, meadow, rainfall, koto). This doc walks you through making your own.
+A preset is a **room** — a self-contained tonal world that responds to Claude Code hook events with a coherent set of sounds. Thirty-six ship in the box (meadow, cathedral, rainfall, koto, and 32 more — `claudio preset list`). This doc walks you through making your own in code; for the no-code path, hit **✚ Build a preset** in `claudio web`.
 
 The bar to clear is not novelty but **cohesion**: every voice in a preset should belong to the same room. A bright kalimba next to a dusty granular pad is fine; a buzzy FM bell next to a warm piano is not.
 
@@ -326,7 +326,7 @@ For sustained chord voicings (≥6 s pads), equal-tempered intervals beat audibl
 
 ## What sounds bad (don't do this)
 
-These are the failure modes the four shipping presets actively avoid. Most have an explicit memory entry from someone iterating on this project.
+These are the failure modes the shipped presets actively avoid. Most have an explicit memory entry from someone iterating on this project.
 
 1. **FM bells.** Carrier:modulator ratios at 1:1.41 / 1:2.76 with index 3-6 → buzzy synth-bell sound. Use additive synthesis. Period.
 2. **Reverb on everything.** Even a percussive wood tap with a 0.6 s tail makes the whole preset feel washy and distant. Be ruthless about the per-voice policy above.
@@ -367,7 +367,7 @@ The TUI (`claudio tune`) is the right place to taste-tune. It writes back to `pr
 ### What "good" sounds like
 
 - A 60-second `claudio demo` should feel **like a moment**, not a checklist.
-- Switch to your preset, then to one of the four shipping presets — does the transition feel like changing rooms or like an abrupt cut? Same A-root → continuous; mixed roots → discontinuous (sometimes intentional).
+- Switch to your preset, then to one of the shipped presets — does the transition feel like changing rooms or like an abrupt cut? Same A-root → continuous; mixed roots → discontinuous (sometimes intentional).
 - Run `claudio test` with no song mode, no quant. The Markov picker should produce melodic motion, not random pitch leaps.
 - After 5 minutes of normal Claude Code use, the preset should fade into the background — not because it's quiet, but because your nervous system stops tracking it as "music" and starts tracking it as "the room."
 

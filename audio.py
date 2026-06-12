@@ -604,17 +604,19 @@ def play_simple(sample_path, gain_linear, tag="preview"):
     _spawn_one(sample_path, max(0.0, min(1.0, gain_linear)), None, 0.0, tag)
 
 
-def drone_play_once(sample_path, gain_linear) -> int:
+def drone_play_once(sample_path, gain_linear, rate=None) -> int:
     """Blocking single play for drone.py's loop. Spawns the player tracked
     (tag='drone') so stop_drone() can target exactly this player across
-    processes, then waits for it. Returns 0 normally, 127 if no backend."""
+    processes, then waits for it. `rate` (playback multiplier) lets the drone
+    follow a live root transpose so it stays consonant with the re-keyed
+    voices. Returns 0 normally, 127 if no backend."""
     be = get_backend()
     if be.kind == "null":
         return 127
     # block=True: winsound plays synchronously; the others return a Popen we
     # wait on. Either way the call blocks for the clip's duration, so the
     # drone loop spaces its iterations correctly on every OS.
-    p = _spawn_one(sample_path, max(0.0, min(1.0, gain_linear)), None, 0.0,
+    p = _spawn_one(sample_path, max(0.0, min(1.0, gain_linear)), rate, 0.0,
                    "drone", block=True)
     if p is not None:
         try:

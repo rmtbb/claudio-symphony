@@ -51,6 +51,16 @@ except Exception:
 SCALE_NAMES = ["A_major", "A_pent", "A_lydian", "A_lydian_pent", "A_dorian",
                "A_aeolian", "A_in_sen", "A_phrygian", "A_yo", "A_hijaz"]
 
+# Chord progressions (mirrors event.py CHORDS keys / PROGRESSIONS).
+CHORD_NAMES = ["A", "Am", "B", "Bm", "C", "C#m", "D", "Dm", "E", "Em", "F", "F#m", "G"]
+PROGRESSION_PRESETS = {
+    "pop":        ["A", "E", "F#m", "D"],
+    "doo_wop":    ["A", "F#m", "D", "E"],
+    "andalusian": ["Am", "G", "F", "E"],
+    "canon":      ["A", "E", "F#m", "C#m", "D", "A", "D", "E"],
+    "lofi":       ["Bm", "E", "A", "F#m"],
+}
+
 # ---------- json + domain helpers (mirror cli.py, no import side effects) ----------
 
 def load_json(p, default):
@@ -174,11 +184,26 @@ def music_state():
             songs = []
         try: gsong = song_mod.global_song()
         except Exception: gsong = None
+    off = root_offset_clamped(cfg.get("root_offset", 0))
+    prog = cfg.get("progression") or {}
     return {
         "scales": SCALE_NAMES, "scale_global": cfg.get("scale_override"),
         "quant": {"enabled": bool(q.get("enabled")), "bpm": float(q.get("bpm", 120.0)), "grid": float(q.get("grid", 0.5))},
         "songs": songs, "song_global": gsong,
+        "root_offset": off, "root_note": root_note_name(off),
+        "chords": {"library": CHORD_NAMES, "presets": PROGRESSION_PRESETS,
+                   "prog": {"enabled": bool(prog.get("enabled")), "preset": prog.get("preset"),
+                            "steps": prog.get("steps") or [], "step_s": float(prog.get("step_s", 8) or 8)}},
     }
+
+# Note names by pitch class; A (pc 9) is Claudio's rendered root (A=432).
+_NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+def root_offset_clamped(v):
+    try: n = int(round(float(v or 0)))
+    except (TypeError, ValueError): return 0
+    return max(-6, min(6, n))
+def root_note_name(off):
+    return _NOTE_NAMES[(9 + int(off)) % 12]
 
 def fire_test(preset_hint=None):
     """Fire one of each event through event.py (uses the active routing)."""
@@ -299,7 +324,7 @@ def create_custom_preset(spec):
             return {"ok": False, "msg": "none of the chosen sounds had samples"}
 
         # event map: keep base's; for a blank preset, auto-spread voices across
-        # the 9 events so it makes sound immediately (refine later in Events tab).
+        # the 9 events so it makes sound immediately (refine later in the Sounds tab).
         evmap = preset.setdefault("events", {})
         if not base:
             vlist = list(voices.keys())
@@ -629,6 +654,47 @@ class Handler(BaseHTTPRequestHandler):
                 return self._rule_add(b)
             if path == "/api/rule/rm":
                 return self._rule_rm(b)
+            if path == "/api/root":
+                # Live re-key: set the global transpose off A. Accepts a raw
+                # semitone offset, or a pitch class 0..11 (the browser mic-jam
+                # mode sends the detected pitch class and we wrap to ±6 so the
+                # move is always the nearest enharmonic). null/clear → back to A.
+                cfg = load_config()
+                if b.get("clear") or (b.get("offset") is None and b.get("pc") is None):
+                    cfg.pop("root_offset", None)
+                else:
+                    if b.get("pc") is not None:
+                        # nearest signed distance from A (pc 9), wrapped to [-6,6]
+                        off = ((int(b["pc"]) - 9 + 6) % 12) - 6
+                    else:
+                        off = root_offset_clamped(b.get("offset"))
+                    cfg["root_offset"] = root_offset_clamped(off)
+                save_config(cfg)
+                o = root_offset_clamped(cfg.get("root_offset", 0))
+                return self._send(200, {"ok": True, "root_offset": o, "root_note": root_note_name(o)})
+            if path == "/api/chords":
+                # Chord progression: a wall-clock cycle of chords that re-pools
+                # every voice to the live chord's tones. Body: {preset} to load
+                # a shipped progression, {steps:[labels]} for custom, {step_s},
+                # {enabled}, or {off:true}.
+                cfg = load_config(); prog = cfg.get("progression") or {}
+                if b.get("off"):
+                    prog["enabled"] = False
+                else:
+                    if b.get("preset") in PROGRESSION_PRESETS:
+                        prog["preset"] = b["preset"]
+                        prog["steps"] = list(PROGRESSION_PRESETS[b["preset"]])
+                        prog["enabled"] = True
+                    if isinstance(b.get("steps"), list):
+                        steps = [s for s in b["steps"] if s in CHORD_NAMES][:12]
+                        if len(steps) >= 2:
+                            prog["steps"] = steps; prog["preset"] = "custom"; prog["enabled"] = True
+                    if b.get("step_s") is not None:
+                        prog["step_s"] = round(clamp(float(b["step_s"]), 2, 60), 1)
+                    if "enabled" in b:
+                        prog["enabled"] = bool(b["enabled"]) and bool(prog.get("steps"))
+                cfg["progression"] = prog; save_config(cfg)
+                return self._send(200, {"ok": True, "progression": prog})
             if path == "/api/scale":
                 cfg = load_config(); name = b.get("name")
                 if name and name in SCALE_NAMES: cfg["scale_override"] = name

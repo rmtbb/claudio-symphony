@@ -10,6 +10,13 @@ Single-instance via PID file.
 import os, sys, time, signal, json
 from pathlib import Path
 
+def _root_offset(cfg):
+    """Global live transpose in semitones off A, clamped to a tritone — mirrors
+    event.root_offset so the drone bed follows the same re-key as the voices."""
+    try: n = int(round(float(cfg.get("root_offset", 0) or 0)))
+    except (TypeError, ValueError): return 0
+    return max(-6, min(6, n))
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import audio  # noqa: E402  (cross-platform playback backend)
@@ -141,7 +148,11 @@ def main():
             except Exception:
                 pass
             try:
-                code = audio.drone_play_once(drone_path, drone_gain)
+                # Re-read the live root each loop so mic-jam re-keys carry the
+                # drone with them (rate = 2**(semitones/12)); 0 → native rate.
+                off = _root_offset(read_config())
+                rate = (2 ** (off / 12.0)) if off else None
+                code = audio.drone_play_once(drone_path, drone_gain, rate)
                 if code == 127:          # backend unavailable mid-run
                     log("backend unavailable; exiting")
                     break
