@@ -1,0 +1,128 @@
+{
+  "name": "sunchamber",
+  "description": "Bright chamber strings, pizzicato sparkling and soft arco glowing, sunlit and gentle. A small string ensemble both plucked (pizzicato, dry and bouncy) and bowed (arco, warm soft swell) — sunlit chamber music, elegant and tender, warm-bright and never severe. A round double-bass pizz grounds the room; a singing violin arco carries the melody while a viola pizz dances a counter-line; a warm cello glows in the middle; high violin harmonics chime, tiny top-string flicks sparkle with light echoes; a full arco ensemble blooms open, a tremolo-bowed chord shimmers, a col-legno tap keeps the pulse, and a bright pizz flick lifts as a tender accent. A major @ A=432, additive and clean, hall reverb, sunlit and never dreary.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [9, 4],
+  "scale_pitches": [57, 59, 61, 62, 64, 66, 68, 69, 71, 73, 74, 76, 78, 80, 81],
+  "voices": {
+    "bass": {
+      "dir": "bass",
+      "mioi": 12,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 33,
+      "reverb": {"wet": 0.12, "decay": 1.6, "predelay_ms": 14, "brightness": 0.3}
+    },
+    "lead": {
+      "dir": "lead",
+      "mioi": 2.4,
+      "gain": 0.48,
+      "reverb": {"wet": 0.3, "decay": 2.6, "predelay_ms": 24, "brightness": 0.55},
+      "delay": {"ms": 360, "feedback": 0.16, "count": 2}
+    },
+    "lead2": {
+      "dir": "lead2",
+      "mioi": 1.4,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "reverb": {"wet": 0.18, "decay": 1.6, "predelay_ms": 16, "brightness": 0.5}
+    },
+    "tone": {
+      "dir": "tone",
+      "mioi": 2.6,
+      "gain": 0.46,
+      "tonal_anchor_midi": 57,
+      "reverb": {"wet": 0.3, "decay": 2.8, "predelay_ms": 26, "brightness": 0.45}
+    },
+    "chime": {
+      "dir": "chime",
+      "mioi": 2.4,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.38, "decay": 3.2, "predelay_ms": 28, "brightness": 0.6},
+      "delay": {"ms": 340, "feedback": 0.2, "count": 2}
+    },
+    "sparkle": {
+      "dir": "sparkle",
+      "mioi": 0.5,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.2, "decay": 1.8, "predelay_ms": 14, "brightness": 0.6},
+      "delay": {"ms": 300, "feedback": 0.24, "count": 3}
+    },
+    "bloom": {
+      "dir": "bloom",
+      "mioi": 16,
+      "gain": 0.42,
+      "tonal_anchor_midi": 69,
+      "reverb": {"wet": 0.52, "decay": 5.2, "predelay_ms": 45, "brightness": 0.5}
+    },
+    "cluster": {
+      "dir": "cluster",
+      "mioi": 22,
+      "gain": 0.55,
+      "reverb": {"wet": 0.5, "decay": 5.0, "predelay_ms": 42, "brightness": 0.52}
+    },
+    "tap": {
+      "dir": "tap",
+      "mioi": 0.14,
+      "gain": 0.55,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 57,
+      "reverb": {"wet": 0.04, "decay": 0.5, "predelay_ms": 8, "brightness": 0.4}
+    },
+    "chirp": {
+      "dir": "chirp",
+      "mioi": 0.42,
+      "gain": 0.52,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.14, "decay": 1.6, "predelay_ms": 12, "brightness": 0.6}
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "tap",
+      "by_tool": {
+        "Edit": "lead2",
+        "Write": "lead2",
+        "MultiEdit": "lead2",
+        "NotebookEdit": "lead2"
+      }
+    },
+    "PostToolUse": {
+      "default": "lead",
+      "by_tool": {
+        "Read": "tone",
+        "Grep": "tone",
+        "Glob": "tone"
+      },
+      "on_failure": "chime"
+    },
+    "Stop": {
+      "default": "chime"
+    },
+    "SessionStart": {
+      "default": "cluster"
+    },
+    "SessionEnd": {
+      "default": "bass"
+    },
+    "SubagentStop": {
+      "default": "sparkle"
+    },
+    "UserPromptSubmit": {
+      "default": "tone"
+    },
+    "Notification": {
+      "default": "chirp",
+      "on_failure": "sparkle"
+    },
+    "PreCompact": {
+      "default": "bloom"
+    }
+  }
+}

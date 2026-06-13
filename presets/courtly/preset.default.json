@@ -1,0 +1,209 @@
+{
+  "name": "courtly",
+  "description": "A concert harp cascading through a sunlit hall while pizzicato strings dance underneath. Plucked strings both soft (harp, round and shimmering) and short (pizzicato, dry and bouncy) — a low harp string grounds the cascade, a mid harp pluck rolls through the melody like a glissando fragment, a pizzicato violin and soft cello pizzicato dance a bouncing counter-line, high harp harmonics ring flute-pure, tiny top-octave flicks tumble into delay echoes, a bowed arco swell blooms warm underneath, and rolled harp chords shimmer up like a harpist's sweeping hand. Elegant, cascading, regal but playful and bright — all sparkle and grace. A major @ A=432, additive and clean, lush hall reverb with taste. Every register covered, never dreary, never harsh.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [
+    9,
+    4
+  ],
+  "scale_pitches": [
+    57,
+    59,
+    61,
+    62,
+    64,
+    66,
+    68,
+    69,
+    71,
+    73,
+    74,
+    76,
+    78,
+    80,
+    81
+  ],
+  "voices": {
+    "harp_bass": {
+      "dir": "harp_bass",
+      "mioi": 11,
+      "gain": 0.5,
+      "tonal_anchor_midi": 33,
+      "reverb": {
+        "wet": 0.12,
+        "decay": 1.8,
+        "predelay_ms": 14,
+        "brightness": 0.32
+      }
+    },
+    "harp_lead": {
+      "dir": "harp_lead",
+      "mioi": 2.0,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.2,
+        "decay": 1.8,
+        "predelay_ms": 20,
+        "brightness": 0.6
+      },
+      "delay": {
+        "ms": 320,
+        "feedback": 0.18,
+        "count": 2
+      }
+    },
+    "pizz_violin": {
+      "dir": "pizz_violin",
+      "mioi": 0.9,
+      "gain": 0.48,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.16,
+        "decay": 1.2,
+        "predelay_ms": 14,
+        "brightness": 0.55
+      }
+    },
+    "pizz_cello": {
+      "dir": "pizz_cello",
+      "mioi": 1.2,
+      "gain": 0.46,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 45,
+      "reverb": {
+        "wet": 0.18,
+        "decay": 1.6,
+        "predelay_ms": 18,
+        "brightness": 0.42
+      }
+    },
+    "harp_harmonic": {
+      "dir": "harp_harmonic",
+      "mioi": 2.6,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.36,
+        "decay": 3.2,
+        "predelay_ms": 28,
+        "brightness": 0.62
+      },
+      "delay": {
+        "ms": 320,
+        "feedback": 0.2,
+        "count": 2
+      }
+    },
+    "harp_droplets": {
+      "dir": "harp_droplets",
+      "mioi": 2.4,
+      "gain": 0.46,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.3,
+        "decay": 2.6,
+        "predelay_ms": 22,
+        "brightness": 0.64
+      },
+      "delay": {
+        "ms": 280,
+        "feedback": 0.26,
+        "count": 3
+      }
+    },
+    "arco_bloom": {
+      "dir": "arco_bloom",
+      "mioi": 16,
+      "gain": 0.42,
+      "tonal_anchor_midi": 57,
+      "reverb": {
+        "wet": 0.52,
+        "decay": 5.0,
+        "predelay_ms": 45,
+        "brightness": 0.44
+      }
+    },
+    "rolled_chord": {
+      "dir": "rolled_chord",
+      "mioi": 22,
+      "gain": 0.52,
+      "reverb": {
+        "wet": 0.5,
+        "decay": 4.8,
+        "predelay_ms": 40,
+        "brightness": 0.5
+      }
+    },
+    "muted_pizz": {
+      "dir": "muted_pizz",
+      "mioi": 0.12,
+      "gain": 0.55,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 57,
+      "reverb": {
+        "wet": 0.04,
+        "decay": 0.6,
+        "predelay_ms": 8,
+        "brightness": 0.42
+      }
+    },
+    "harp_ping": {
+      "dir": "harp_ping",
+      "mioi": 0.5,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.18,
+        "decay": 1.8,
+        "predelay_ms": 14,
+        "brightness": 0.62
+      }
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "muted_pizz",
+      "by_tool": {
+        "Edit": "pizz_violin",
+        "Write": "pizz_violin",
+        "MultiEdit": "pizz_violin",
+        "NotebookEdit": "pizz_violin"
+      }
+    },
+    "PostToolUse": {
+      "default": "harp_lead",
+      "by_tool": {
+        "Read": "pizz_cello",
+        "Grep": "pizz_cello",
+        "Glob": "pizz_cello"
+      },
+      "on_failure": "harp_harmonic"
+    },
+    "Stop": {
+      "default": "harp_harmonic"
+    },
+    "SessionStart": {
+      "default": "rolled_chord"
+    },
+    "SessionEnd": {
+      "default": "harp_bass"
+    },
+    "SubagentStop": {
+      "default": "harp_droplets"
+    },
+    "UserPromptSubmit": {
+      "default": "pizz_cello"
+    },
+    "Notification": {
+      "default": "harp_ping",
+      "on_failure": "harp_droplets"
+    },
+    "PreCompact": {
+      "default": "arco_bloom"
+    }
+  }
+}

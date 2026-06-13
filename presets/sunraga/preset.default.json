@@ -1,0 +1,213 @@
+{
+  "name": "sunraga",
+  "description": "A santoor shimmering in morning light, struck strings raining bright major sunlight. Struck-string santoor courses, bright and shimmering with fast metallic mallet flutter and many-string resonance — the low course grounds the raga, mid and high courses rain and ornament the melody, a single-string ping glints, top strings cascade in bright droplets, a bowed swell blooms the sympathetic strings into a lush wash, and a rolling tremolo cloud glitters like sun on water. A Lydian @ A=432, additive and clean, radiant and cascading, devotional joy, never heavy, never dreary.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [
+    9,
+    4
+  ],
+  "scale_pitches": [
+    57,
+    59,
+    61,
+    63,
+    64,
+    66,
+    68,
+    69,
+    71,
+    73,
+    75,
+    76,
+    78,
+    80,
+    81
+  ],
+  "voices": {
+    "bass": {
+      "dir": "bass",
+      "mioi": 12,
+      "gain": 0.5,
+      "tonal_anchor_midi": 33,
+      "reverb": {
+        "wet": 0.12,
+        "decay": 1.8,
+        "predelay_ms": 14,
+        "brightness": 0.4
+      }
+    },
+    "lead": {
+      "dir": "lead",
+      "mioi": 2.0,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.2,
+        "decay": 1.8,
+        "predelay_ms": 20,
+        "brightness": 0.6
+      },
+      "delay": {
+        "ms": 320,
+        "feedback": 0.18,
+        "count": 2
+      }
+    },
+    "lead2": {
+      "dir": "lead2",
+      "mioi": 1.6,
+      "gain": 0.46,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.22,
+        "decay": 1.9,
+        "predelay_ms": 18,
+        "brightness": 0.62
+      },
+      "delay": {
+        "ms": 300,
+        "feedback": 0.2,
+        "count": 2
+      }
+    },
+    "tone": {
+      "dir": "tone",
+      "mioi": 2.4,
+      "gain": 0.46,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.18,
+        "decay": 2.4,
+        "predelay_ms": 22,
+        "brightness": 0.5
+      }
+    },
+    "chime": {
+      "dir": "chime",
+      "mioi": 2.2,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.36,
+        "decay": 3.0,
+        "predelay_ms": 28,
+        "brightness": 0.6
+      }
+    },
+    "sparkle": {
+      "dir": "sparkle",
+      "mioi": 2.0,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.4,
+        "decay": 3.4,
+        "predelay_ms": 26,
+        "brightness": 0.62
+      },
+      "delay": {
+        "ms": 360,
+        "feedback": 0.24,
+        "count": 3
+      }
+    },
+    "bloom": {
+      "dir": "bloom",
+      "mioi": 16,
+      "gain": 0.44,
+      "tonal_anchor_midi": 69,
+      "reverb": {
+        "wet": 0.52,
+        "decay": 5.2,
+        "predelay_ms": 45,
+        "brightness": 0.45
+      },
+      "delay": {
+        "ms": 420,
+        "feedback": 0.18,
+        "count": 2
+      }
+    },
+    "cluster": {
+      "dir": "cluster",
+      "mioi": 20,
+      "gain": 0.5,
+      "reverb": {
+        "wet": 0.48,
+        "decay": 4.8,
+        "predelay_ms": 40,
+        "brightness": 0.5
+      }
+    },
+    "tap": {
+      "dir": "tap",
+      "mioi": 0.14,
+      "gain": 0.55,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 69,
+      "reverb": {
+        "wet": 0.04,
+        "decay": 0.6,
+        "predelay_ms": 8,
+        "brightness": 0.42
+      }
+    },
+    "chirp": {
+      "dir": "chirp",
+      "mioi": 0.4,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.12,
+        "decay": 1.6,
+        "predelay_ms": 12,
+        "brightness": 0.62
+      }
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "tap",
+      "by_tool": {
+        "Edit": "lead2",
+        "Write": "lead2",
+        "MultiEdit": "lead2",
+        "NotebookEdit": "lead2"
+      }
+    },
+    "PostToolUse": {
+      "default": "lead",
+      "by_tool": {
+        "Read": "tone",
+        "Grep": "tone",
+        "Glob": "tone"
+      },
+      "on_failure": "chime"
+    },
+    "Stop": {
+      "default": "chime"
+    },
+    "SessionStart": {
+      "default": "cluster"
+    },
+    "SessionEnd": {
+      "default": "bass"
+    },
+    "SubagentStop": {
+      "default": "sparkle"
+    },
+    "UserPromptSubmit": {
+      "default": "tone"
+    },
+    "Notification": {
+      "default": "chirp",
+      "on_failure": "sparkle"
+    },
+    "PreCompact": {
+      "default": "bloom"
+    }
+  }
+}

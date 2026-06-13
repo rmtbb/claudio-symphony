@@ -1,0 +1,132 @@
+{
+  "name": "tinewarm",
+  "description": "A soft Rhodes electric piano glowing mellow and lo-fi cozy, tines humming in lamplight. Warm Rhodes tine-keys with a soft bell-like attack and a mellow body, a gentle lo-fi haze laid over everything — plush and intimate, warm and bright-mellow, smiling and tender. A round low tine grounds the floor; a singing mid tine-key carries the cozy melody with gentle tremolo while a brighter higher key answers; a soft creamy tone fills the plush middle; a high bell-tine chime pings with soft shimmer; tiny tine-flicks glint through the haze; a Rhodes-pad bloom swells lush and warm; a soft cloud of detuned tines shimmers; a faint tape-warm amp hum hums underneath; and a bright little tine-flick lands the tender accents. A major pentatonic @ A=432, additive and clean, never dreary — every register covered, cozy electric-piano warmth from floor to glint.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [9, 4],
+  "scale_pitches": [57, 59, 61, 64, 66, 69, 71, 73, 76, 78, 81],
+  "voices": {
+    "bass": {
+      "dir": "bass",
+      "mioi": 12,
+      "gain": 0.5,
+      "tonal_anchor_midi": 33,
+      "reverb": {"wet": 0.1, "decay": 1.8, "predelay_ms": 12, "brightness": 0.3}
+    },
+    "lead": {
+      "dir": "lead",
+      "mioi": 2.4,
+      "gain": 0.48,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 57,
+      "reverb": {"wet": 0.2, "decay": 2.2, "predelay_ms": 22, "brightness": 0.5},
+      "delay": {"ms": 340, "feedback": 0.18, "count": 2}
+    },
+    "lead2": {
+      "dir": "lead2",
+      "mioi": 2.2,
+      "gain": 0.46,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 64,
+      "reverb": {"wet": 0.2, "decay": 2.0, "predelay_ms": 20, "brightness": 0.55}
+    },
+    "tone": {
+      "dir": "tone",
+      "mioi": 2.6,
+      "gain": 0.44,
+      "tonal_anchor_midi": 57,
+      "reverb": {"wet": 0.18, "decay": 2.4, "predelay_ms": 22, "brightness": 0.42}
+    },
+    "chime": {
+      "dir": "chime",
+      "mioi": 2.4,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.36, "decay": 3.2, "predelay_ms": 28, "brightness": 0.58},
+      "delay": {"ms": 360, "feedback": 0.22, "count": 2}
+    },
+    "sparkle": {
+      "dir": "sparkle",
+      "mioi": 0.5,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.22, "decay": 2.0, "predelay_ms": 16, "brightness": 0.6},
+      "delay": {"ms": 300, "feedback": 0.2, "count": 3}
+    },
+    "bloom": {
+      "dir": "bloom",
+      "mioi": 16,
+      "gain": 0.42,
+      "tonal_anchor_midi": 69,
+      "reverb": {"wet": 0.5, "decay": 5.0, "predelay_ms": 45, "brightness": 0.45},
+      "delay": {"ms": 440, "feedback": 0.18, "count": 2}
+    },
+    "cluster": {
+      "dir": "cluster",
+      "mioi": 22,
+      "gain": 0.52,
+      "tonal_anchor_midi": 57,
+      "reverb": {"wet": 0.48, "decay": 4.8, "predelay_ms": 42, "brightness": 0.42}
+    },
+    "texture": {
+      "dir": "texture",
+      "mioi": 0.16,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 45,
+      "reverb": {"wet": 0.04, "decay": 0.7, "predelay_ms": 8, "brightness": 0.3}
+    },
+    "chirp": {
+      "dir": "chirp",
+      "mioi": 0.45,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.12, "decay": 1.6, "predelay_ms": 12, "brightness": 0.58}
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "texture",
+      "by_tool": {
+        "Edit": "sparkle",
+        "Write": "sparkle",
+        "MultiEdit": "sparkle",
+        "NotebookEdit": "sparkle"
+      }
+    },
+    "PostToolUse": {
+      "default": "lead",
+      "by_tool": {
+        "Read": "tone",
+        "Grep": "tone",
+        "Glob": "tone"
+      },
+      "on_failure": "chime"
+    },
+    "Stop": {
+      "default": "chime"
+    },
+    "SessionStart": {
+      "default": "cluster"
+    },
+    "SessionEnd": {
+      "default": "bass"
+    },
+    "SubagentStop": {
+      "default": "lead2"
+    },
+    "UserPromptSubmit": {
+      "default": "tone"
+    },
+    "Notification": {
+      "default": "chirp",
+      "on_failure": "sparkle"
+    },
+    "PreCompact": {
+      "default": "bloom"
+    }
+  }
+}

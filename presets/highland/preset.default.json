@@ -1,0 +1,202 @@
+{
+  "name": "highland",
+  "description": "A pan flute breathing across a sunlit mountain meadow, hollow and airy and calm. Round breathy pipe tones with soft air-noise and gentle overblow rise over a low bamboo ground: a melody pan-flute swelling in on the breath, a brighter whistle-pipe echoing across the valley, a warm low-pipe cushion, a distant pipe-harmonic call, tiny top-octave breath-flicks on the wind, a lush breath-pad bloom, a shimmering breathy chord-cloud, the mountain breeze itself, and a happy little birdcall flick. A major pentatonic, additive only, hall reverb. Highland and Andean calm — open, bright, and uplifted, peaceful but never lonely, never dreary.",
+  "drone": null,
+  "master_gain": 0.44,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [
+    9,
+    4
+  ],
+  "scale_pitches": [
+    57,
+    59,
+    61,
+    64,
+    66,
+    69,
+    71,
+    73,
+    76,
+    78,
+    81
+  ],
+  "voices": {
+    "pipe_ground": {
+      "dir": "pipe_ground",
+      "mioi": 12,
+      "gain": 0.5,
+      "tonal_anchor_midi": 33,
+      "reverb": {
+        "wet": 0.18,
+        "decay": 2.2,
+        "predelay_ms": 18,
+        "brightness": 0.32
+      }
+    },
+    "pan_lead": {
+      "dir": "pan_lead",
+      "mioi": 2.2,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.34,
+        "decay": 3.2,
+        "predelay_ms": 30,
+        "brightness": 0.55
+      },
+      "delay": {
+        "ms": 340,
+        "feedback": 0.2,
+        "count": 2
+      }
+    },
+    "whistle_pipe": {
+      "dir": "whistle_pipe",
+      "mioi": 2.0,
+      "gain": 0.46,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.36,
+        "decay": 3.4,
+        "predelay_ms": 32,
+        "brightness": 0.6
+      },
+      "delay": {
+        "ms": 420,
+        "feedback": 0.22,
+        "count": 3
+      }
+    },
+    "low_pipe": {
+      "dir": "low_pipe",
+      "mioi": 2.6,
+      "gain": 0.48,
+      "tonal_anchor_midi": 57,
+      "reverb": {
+        "wet": 0.3,
+        "decay": 3.0,
+        "predelay_ms": 26,
+        "brightness": 0.45
+      }
+    },
+    "pipe_ping": {
+      "dir": "pipe_ping",
+      "mioi": 2.4,
+      "gain": 0.48,
+      "reverb": {
+        "wet": 0.4,
+        "decay": 3.6,
+        "predelay_ms": 30,
+        "brightness": 0.6
+      }
+    },
+    "breath_flick": {
+      "dir": "breath_flick",
+      "mioi": 0.5,
+      "gain": 0.46,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.3,
+        "decay": 2.4,
+        "predelay_ms": 18,
+        "brightness": 0.62
+      },
+      "delay": {
+        "ms": 300,
+        "feedback": 0.24,
+        "count": 3
+      }
+    },
+    "breath_bloom": {
+      "dir": "breath_bloom",
+      "mioi": 16,
+      "gain": 0.44,
+      "tonal_anchor_midi": 57,
+      "reverb": {
+        "wet": 0.52,
+        "decay": 5.2,
+        "predelay_ms": 45,
+        "brightness": 0.5
+      }
+    },
+    "pipe_cluster": {
+      "dir": "pipe_cluster",
+      "mioi": 22,
+      "gain": 0.5,
+      "reverb": {
+        "wet": 0.5,
+        "decay": 5.0,
+        "predelay_ms": 42,
+        "brightness": 0.52
+      }
+    },
+    "wind_breath": {
+      "dir": "wind_breath",
+      "mioi": 0.5,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.08,
+        "decay": 1.2,
+        "predelay_ms": 10,
+        "brightness": 0.4
+      }
+    },
+    "pipe_chirp": {
+      "dir": "pipe_chirp",
+      "mioi": 0.4,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.22,
+        "decay": 2.0,
+        "predelay_ms": 14,
+        "brightness": 0.6
+      }
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "wind_breath",
+      "by_tool": {
+        "Edit": "breath_flick",
+        "Write": "breath_flick",
+        "MultiEdit": "breath_flick",
+        "NotebookEdit": "breath_flick"
+      }
+    },
+    "PostToolUse": {
+      "default": "pan_lead",
+      "by_tool": {
+        "Read": "low_pipe",
+        "Grep": "low_pipe",
+        "Glob": "low_pipe"
+      },
+      "on_failure": "pipe_ping"
+    },
+    "Stop": {
+      "default": "pipe_ping"
+    },
+    "SessionStart": {
+      "default": "pipe_cluster"
+    },
+    "SessionEnd": {
+      "default": "pipe_ground"
+    },
+    "SubagentStop": {
+      "default": "whistle_pipe"
+    },
+    "UserPromptSubmit": {
+      "default": "low_pipe"
+    },
+    "Notification": {
+      "default": "pipe_chirp",
+      "on_failure": "breath_flick"
+    },
+    "PreCompact": {
+      "default": "breath_bloom"
+    }
+  }
+}

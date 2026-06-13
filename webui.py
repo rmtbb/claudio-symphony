@@ -10,7 +10,7 @@ the live-activity view reads the very markers event.py touches when Claude works
 Run:  python3 webui.py [--port 8788] [--open]
   or: claudio web
 """
-import os, sys, json, time, re, random, shutil, signal, threading, urllib.parse
+import os, sys, json, time, re, random, shutil, threading, urllib.parse
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -804,7 +804,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/record/stop":
                 try:
                     m = json.loads(REC_ACTIVE.read_text())
-                    os.kill(int(m["pid"]), signal.SIGTERM)
+                    audio.terminate_pid(int(m["pid"]))   # portable; keeps POSIX-isms in audio.py
                 except Exception:
                     pass
                 return self._send(200, {"ok": True})

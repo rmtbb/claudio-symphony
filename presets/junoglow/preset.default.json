@@ -1,0 +1,142 @@
+{
+  "name": "junoglow",
+  "description": "Soft analog synth pads breathing dreamy and warm, a Juno chorus shimmering in the sun. Warm Juno-style additive pads with gentle chorus shimmer and soft bleeps: a round sub-pad ground floor, a soft-attack pad lead singing the melody, a playful pluck-synth bleep answering, a plush chorused tone in the middle, soft synth-bell pings and tiny arpeggiating droplets up top, a big chorused bloom swell, a shimmering detuned-saw cloud, and the faint warm hiss of the machine. A major pentatonic at A=432, additive and clean, hall reverb, plush and bright, retro-warm and optimistic, never cold or dark.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [
+    9,
+    4
+  ],
+  "scale_pitches": [
+    57,
+    59,
+    61,
+    64,
+    66,
+    69,
+    71,
+    73,
+    76,
+    78,
+    81
+  ],
+  "voices": {
+    "bass": {
+      "dir": "bass",
+      "mioi": 12,
+      "gain": 0.5,
+      "tonal_anchor_midi": 33,
+      "reverb": {"wet": 0.12, "decay": 1.8, "predelay_ms": 14, "brightness": 0.3}
+    },
+    "lead": {
+      "dir": "lead",
+      "mioi": 2.6,
+      "gain": 0.48,
+      "tonal_anchor_midi": 69,
+      "reverb": {"wet": 0.4, "decay": 3.6, "predelay_ms": 30, "brightness": 0.55},
+      "delay": {"ms": 360, "feedback": 0.2, "count": 2}
+    },
+    "lead2": {
+      "dir": "lead2",
+      "mioi": 1.6,
+      "gain": 0.46,
+      "rate_jitter": true,
+      "reverb": {"wet": 0.2, "decay": 1.8, "predelay_ms": 18, "brightness": 0.6}
+    },
+    "tone": {
+      "dir": "tone",
+      "mioi": 2.8,
+      "gain": 0.44,
+      "tonal_anchor_midi": 64,
+      "reverb": {"wet": 0.42, "decay": 3.8, "predelay_ms": 32, "brightness": 0.5}
+    },
+    "chime": {
+      "dir": "chime",
+      "mioi": 2.4,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.38, "decay": 3.2, "predelay_ms": 28, "brightness": 0.6}
+    },
+    "sparkle": {
+      "dir": "sparkle",
+      "mioi": 0.6,
+      "gain": 0.46,
+      "rate_jitter": true,
+      "reverb": {"wet": 0.34, "decay": 2.8, "predelay_ms": 22, "brightness": 0.62},
+      "delay": {"ms": 280, "feedback": 0.26, "count": 3}
+    },
+    "bloom": {
+      "dir": "bloom",
+      "mioi": 16,
+      "gain": 0.44,
+      "tonal_anchor_midi": 69,
+      "reverb": {"wet": 0.52, "decay": 5.2, "predelay_ms": 45, "brightness": 0.48},
+      "delay": {"ms": 440, "feedback": 0.18, "count": 2}
+    },
+    "cluster": {
+      "dir": "cluster",
+      "mioi": 22,
+      "gain": 0.5,
+      "reverb": {"wet": 0.5, "decay": 5.0, "predelay_ms": 42, "brightness": 0.52}
+    },
+    "texture": {
+      "dir": "texture",
+      "mioi": 0.16,
+      "gain": 0.4,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 45,
+      "reverb": {"wet": 0.06, "decay": 0.8, "predelay_ms": 10, "brightness": 0.35}
+    },
+    "chirp": {
+      "dir": "chirp",
+      "mioi": 0.4,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.12, "decay": 1.6, "predelay_ms": 12, "brightness": 0.62}
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "texture",
+      "by_tool": {
+        "Edit": "lead2",
+        "Write": "lead2",
+        "MultiEdit": "lead2",
+        "NotebookEdit": "lead2"
+      }
+    },
+    "PostToolUse": {
+      "default": "lead",
+      "by_tool": {
+        "Read": "tone",
+        "Grep": "tone",
+        "Glob": "tone"
+      },
+      "on_failure": "chime"
+    },
+    "Stop": {
+      "default": "chime"
+    },
+    "SessionStart": {
+      "default": "cluster"
+    },
+    "SessionEnd": {
+      "default": "bass"
+    },
+    "SubagentStop": {
+      "default": "lead2"
+    },
+    "UserPromptSubmit": {
+      "default": "tone"
+    },
+    "Notification": {
+      "default": "chirp",
+      "on_failure": "sparkle"
+    },
+    "PreCompact": {
+      "default": "bloom"
+    }
+  }
+}

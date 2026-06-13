@@ -1,0 +1,213 @@
+{
+  "name": "peal",
+  "description": "A carillon of handbells ringing out joyously over a sunny village square. A low bourdon bell tolls the ground while mid and high handbells peal the melody and descant bright, struck and resonant with rich additive partials and long bright tails. A warm bell sings the sweet middle, tower-bells ping with shimmer, tiny top handbells flick and scatter with delay echoes, overlapping bell-tails bloom into a lush carillon wash, and a change-ringing tumble shimmers through interlocked rows. A damped handbell tap keeps the pulse and a bright treble-bell chirps a jubilant little accent up top. A major @ A=432, additive only, hall reverb, jubilant and celebratory — pure ringing happiness, never dreary.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [
+    9,
+    4
+  ],
+  "scale_pitches": [
+    57,
+    59,
+    61,
+    62,
+    64,
+    66,
+    68,
+    69,
+    71,
+    73,
+    74,
+    76,
+    78,
+    80,
+    81
+  ],
+  "voices": {
+    "bourdon": {
+      "dir": "bourdon",
+      "mioi": 12,
+      "gain": 0.5,
+      "tonal_anchor_midi": 33,
+      "reverb": {
+        "wet": 0.22,
+        "decay": 3.0,
+        "predelay_ms": 20,
+        "brightness": 0.35
+      }
+    },
+    "handbell": {
+      "dir": "handbell",
+      "mioi": 2.2,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.34,
+        "decay": 3.0,
+        "predelay_ms": 26,
+        "brightness": 0.6
+      },
+      "delay": {
+        "ms": 320,
+        "feedback": 0.18,
+        "count": 2
+      }
+    },
+    "descant": {
+      "dir": "descant",
+      "mioi": 2.0,
+      "gain": 0.46,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.36,
+        "decay": 3.0,
+        "predelay_ms": 28,
+        "brightness": 0.62
+      }
+    },
+    "warmbell": {
+      "dir": "warmbell",
+      "mioi": 2.6,
+      "gain": 0.46,
+      "tonal_anchor_midi": 69,
+      "reverb": {
+        "wet": 0.32,
+        "decay": 2.8,
+        "predelay_ms": 26,
+        "brightness": 0.5
+      }
+    },
+    "towerbell": {
+      "dir": "towerbell",
+      "mioi": 2.4,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.40,
+        "decay": 3.4,
+        "predelay_ms": 30,
+        "brightness": 0.62
+      },
+      "delay": {
+        "ms": 300,
+        "feedback": 0.2,
+        "count": 2
+      }
+    },
+    "topbell": {
+      "dir": "topbell",
+      "mioi": 0.45,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.38,
+        "decay": 2.6,
+        "predelay_ms": 18,
+        "brightness": 0.66
+      },
+      "delay": {
+        "ms": 260,
+        "feedback": 0.24,
+        "count": 3
+      }
+    },
+    "carillon_bloom": {
+      "dir": "carillon_bloom",
+      "mioi": 16,
+      "gain": 0.44,
+      "tonal_anchor_midi": 69,
+      "reverb": {
+        "wet": 0.52,
+        "decay": 5.5,
+        "predelay_ms": 45,
+        "brightness": 0.5
+      },
+      "delay": {
+        "ms": 420,
+        "feedback": 0.18,
+        "count": 2
+      }
+    },
+    "change_ring": {
+      "dir": "change_ring",
+      "mioi": 18,
+      "gain": 0.5,
+      "reverb": {
+        "wet": 0.48,
+        "decay": 5.0,
+        "predelay_ms": 42,
+        "brightness": 0.55
+      }
+    },
+    "treblechirp": {
+      "dir": "treblechirp",
+      "mioi": 0.45,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.30,
+        "decay": 2.2,
+        "predelay_ms": 16,
+        "brightness": 0.64
+      }
+    },
+    "handtap": {
+      "dir": "handtap",
+      "mioi": 0.14,
+      "gain": 0.55,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 69,
+      "reverb": {
+        "wet": 0.06,
+        "decay": 0.7,
+        "predelay_ms": 8,
+        "brightness": 0.4
+      }
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "handtap",
+      "by_tool": {
+        "Edit": "handtap",
+        "Write": "handtap",
+        "MultiEdit": "handtap",
+        "NotebookEdit": "handtap"
+      }
+    },
+    "PostToolUse": {
+      "default": "handbell",
+      "by_tool": {
+        "Read": "warmbell",
+        "Grep": "warmbell",
+        "Glob": "warmbell"
+      },
+      "on_failure": "towerbell"
+    },
+    "Stop": {
+      "default": "towerbell"
+    },
+    "SessionStart": {
+      "default": "change_ring"
+    },
+    "SessionEnd": {
+      "default": "bourdon"
+    },
+    "SubagentStop": {
+      "default": "descant"
+    },
+    "UserPromptSubmit": {
+      "default": "warmbell"
+    },
+    "Notification": {
+      "default": "treblechirp",
+      "on_failure": "topbell"
+    },
+    "PreCompact": {
+      "default": "carillon_bloom"
+    }
+  }
+}

@@ -1,0 +1,144 @@
+{
+  "name": "thumbgrove",
+  "description": "A warm kalimba grove at golden hour, woody tines buzzing softly like cicadas at peace. Plucked metal tines on a wooden gourd — warm and earthy with a gentle characteristic buzz that decays fast — over a low gourd-resonated bass heartbeat. Two interlocking lead tines weave a hypnotic mbira cross-rhythm, answered by a sweet muted tone, a bright shimmering chime, scattered seed-pod sparkles, a bowed-gourd bloom, a hocketed thumb-pluck cluster, a dry calabash knuckle tap, and a happy buzzing chirp up top. A major pentatonic @ A=432, additive and clean, African-sunlit and joyful — hypnotic, never harsh, never dreary.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [
+    9,
+    4
+  ],
+  "scale_pitches": [
+    57,
+    59,
+    61,
+    64,
+    66,
+    69,
+    71,
+    73,
+    76,
+    78,
+    81
+  ],
+  "voices": {
+    "bass": {
+      "dir": "bass",
+      "mioi": 12,
+      "gain": 0.5,
+      "tonal_anchor_midi": 33,
+      "reverb": {"wet": 0.1, "decay": 1.6, "predelay_ms": 12, "brightness": 0.3}
+    },
+    "lead": {
+      "dir": "lead",
+      "mioi": 1.6,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "reverb": {"wet": 0.18, "decay": 1.6, "predelay_ms": 16, "brightness": 0.58},
+      "delay": {"ms": 300, "feedback": 0.2, "count": 2}
+    },
+    "lead2": {
+      "dir": "lead2",
+      "mioi": 1.2,
+      "gain": 0.46,
+      "rate_jitter": true,
+      "reverb": {"wet": 0.2, "decay": 1.5, "predelay_ms": 16, "brightness": 0.6},
+      "delay": {"ms": 240, "feedback": 0.22, "count": 2}
+    },
+    "tone": {
+      "dir": "tone",
+      "mioi": 2.0,
+      "gain": 0.46,
+      "tonal_anchor_midi": 64,
+      "reverb": {"wet": 0.18, "decay": 2.0, "predelay_ms": 20, "brightness": 0.5}
+    },
+    "chime": {
+      "dir": "chime",
+      "mioi": 2.4,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.36, "decay": 3.0, "predelay_ms": 28, "brightness": 0.6}
+    },
+    "sparkle": {
+      "dir": "sparkle",
+      "mioi": 0.4,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.3, "decay": 2.4, "predelay_ms": 22, "brightness": 0.62},
+      "delay": {"ms": 360, "feedback": 0.24, "count": 3}
+    },
+    "bloom": {
+      "dir": "bloom",
+      "mioi": 16,
+      "gain": 0.42,
+      "tonal_anchor_midi": 69,
+      "reverb": {"wet": 0.5, "decay": 5, "predelay_ms": 45, "brightness": 0.42},
+      "delay": {"ms": 420, "feedback": 0.18, "count": 2}
+    },
+    "cluster": {
+      "dir": "cluster",
+      "mioi": 22,
+      "gain": 0.5,
+      "reverb": {"wet": 0.48, "decay": 4.8, "predelay_ms": 42, "brightness": 0.45}
+    },
+    "tap": {
+      "dir": "tap",
+      "mioi": 0.14,
+      "gain": 0.55,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 45,
+      "reverb": {"wet": 0.04, "decay": 0.6, "predelay_ms": 8, "brightness": 0.32}
+    },
+    "chirp": {
+      "dir": "chirp",
+      "mioi": 0.35,
+      "gain": 0.55,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.1, "decay": 1.6, "predelay_ms": 12, "brightness": 0.6}
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "tap",
+      "by_tool": {
+        "Edit": "tap",
+        "Write": "tap",
+        "MultiEdit": "tap",
+        "NotebookEdit": "tap"
+      }
+    },
+    "PostToolUse": {
+      "default": "lead",
+      "by_tool": {
+        "Read": "tone",
+        "Grep": "tone",
+        "Glob": "tone"
+      },
+      "on_failure": "lead2"
+    },
+    "Stop": {
+      "default": "chime"
+    },
+    "SessionStart": {
+      "default": "cluster"
+    },
+    "SessionEnd": {
+      "default": "bass"
+    },
+    "SubagentStop": {
+      "default": "sparkle"
+    },
+    "UserPromptSubmit": {
+      "default": "tone"
+    },
+    "Notification": {
+      "default": "chirp",
+      "on_failure": "sparkle"
+    },
+    "PreCompact": {
+      "default": "bloom"
+    }
+  }
+}

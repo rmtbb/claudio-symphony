@@ -1,0 +1,129 @@
+{
+  "name": "courtyard",
+  "description": "Fingerstyle nylon guitar warming a sunlit Spanish courtyard, gentle and intimate. Soft plucked nylon strings with warm woody body resonance and gentle fingertip noise: a round low bass string grounds the courtyard, a soft singing lead fingerpicks the melody while a brighter higher string weaves a counter-line above, a muted thumb-plucked tone fills the sweet woody middle, a flute-pure natural harmonic chimes, tiny string-flicks sparkle with light delay echoes, a strummed chord blooms into a lush room wash, a rolled fingerstyle arpeggio cascades, a soft body-tap keeps the dry percussive pulse, and a bright harmonic flick adds a tender little Spanish accent. A major @ A=432, additive and warm, classical and Mediterranean, never dark or harsh.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [9, 4],
+  "scale_pitches": [57, 59, 61, 62, 64, 66, 68, 69, 71, 73, 74, 76, 78, 80, 81],
+  "voices": {
+    "bass": {
+      "dir": "bass",
+      "mioi": 11,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 33,
+      "reverb": {"wet": 0.12, "decay": 1.8, "predelay_ms": 12, "brightness": 0.3}
+    },
+    "lead": {
+      "dir": "lead",
+      "mioi": 2.2,
+      "gain": 0.46,
+      "rate_jitter": true,
+      "reverb": {"wet": 0.20, "decay": 2.0, "predelay_ms": 20, "brightness": 0.55},
+      "delay": {"ms": 320, "feedback": 0.16, "count": 2}
+    },
+    "lead2": {
+      "dir": "lead2",
+      "mioi": 2.0,
+      "gain": 0.44,
+      "rate_jitter": true,
+      "reverb": {"wet": 0.20, "decay": 1.8, "predelay_ms": 18, "brightness": 0.6}
+    },
+    "tone": {
+      "dir": "tone",
+      "mioi": 1.4,
+      "gain": 0.46,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 52,
+      "reverb": {"wet": 0.16, "decay": 1.4, "predelay_ms": 14, "brightness": 0.35}
+    },
+    "chime": {
+      "dir": "chime",
+      "mioi": 2.6,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.36, "decay": 3.2, "predelay_ms": 28, "brightness": 0.6},
+      "delay": {"ms": 360, "feedback": 0.20, "count": 2}
+    },
+    "sparkle": {
+      "dir": "sparkle",
+      "mioi": 0.5,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.22, "decay": 1.8, "predelay_ms": 14, "brightness": 0.62},
+      "delay": {"ms": 280, "feedback": 0.22, "count": 3}
+    },
+    "bloom": {
+      "dir": "bloom",
+      "mioi": 16,
+      "gain": 0.42,
+      "tonal_anchor_midi": 69,
+      "reverb": {"wet": 0.52, "decay": 5.0, "predelay_ms": 45, "brightness": 0.45}
+    },
+    "cluster": {
+      "dir": "cluster",
+      "mioi": 20,
+      "gain": 0.5,
+      "reverb": {"wet": 0.48, "decay": 4.4, "predelay_ms": 38, "brightness": 0.55}
+    },
+    "tap": {
+      "dir": "tap",
+      "mioi": 0.16,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 45,
+      "reverb": {"wet": 0.06, "decay": 0.6, "predelay_ms": 8, "brightness": 0.35}
+    },
+    "chirp": {
+      "dir": "chirp",
+      "mioi": 0.4,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.12, "decay": 1.4, "predelay_ms": 12, "brightness": 0.62}
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "tap",
+      "by_tool": {
+        "Edit": "tone",
+        "Write": "tone",
+        "MultiEdit": "tone",
+        "NotebookEdit": "tone"
+      }
+    },
+    "PostToolUse": {
+      "default": "lead",
+      "by_tool": {
+        "Read": "lead2",
+        "Grep": "lead2",
+        "Glob": "lead2"
+      },
+      "on_failure": "chime"
+    },
+    "Stop": {
+      "default": "chime"
+    },
+    "SessionStart": {
+      "default": "cluster"
+    },
+    "SessionEnd": {
+      "default": "bass"
+    },
+    "SubagentStop": {
+      "default": "sparkle"
+    },
+    "UserPromptSubmit": {
+      "default": "lead2"
+    },
+    "Notification": {
+      "default": "chirp",
+      "on_failure": "sparkle"
+    },
+    "PreCompact": {
+      "default": "bloom"
+    }
+  }
+}

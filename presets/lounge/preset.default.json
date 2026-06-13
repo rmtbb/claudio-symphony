@@ -1,0 +1,205 @@
+{
+  "name": "lounge",
+  "description": "A mellow vibraphone glowing in a cozy lamplit room, bars humming with soft motor shimmer. Warm struck-metal bars with a gentle tremolo from a slow motor vane, mallets soft and round; a woody upright-bass thumb pluck walks gently underneath, bell-bars ping bright, a bowed-vibe bloom blooms lush and lamplit, a soft mallet-roll cluster shimmers, and a muted tap keeps cozy time. A major pentatonic @ A=432, additive and clean, late-evening but sunlit-warm — smiling, never somber.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [
+    9,
+    4
+  ],
+  "scale_pitches": [
+    57,
+    59,
+    61,
+    64,
+    66,
+    69,
+    71,
+    73,
+    76,
+    78,
+    81
+  ],
+  "voices": {
+    "bass": {
+      "dir": "bass",
+      "mioi": 2.2,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 33,
+      "reverb": {
+        "wet": 0.1,
+        "decay": 1.4,
+        "predelay_ms": 12,
+        "brightness": 0.3
+      }
+    },
+    "lead": {
+      "dir": "lead",
+      "mioi": 2.2,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.2,
+        "decay": 1.8,
+        "predelay_ms": 18,
+        "brightness": 0.55
+      },
+      "delay": {
+        "ms": 360,
+        "feedback": 0.18,
+        "count": 2
+      }
+    },
+    "lead2": {
+      "dir": "lead2",
+      "mioi": 2.0,
+      "gain": 0.48,
+      "rate_jitter": true,
+      "reverb": {
+        "wet": 0.2,
+        "decay": 1.6,
+        "predelay_ms": 16,
+        "brightness": 0.6
+      },
+      "delay": {
+        "ms": 300,
+        "feedback": 0.2,
+        "count": 2
+      }
+    },
+    "tone": {
+      "dir": "tone",
+      "mioi": 2.6,
+      "gain": 0.44,
+      "tonal_anchor_midi": 57,
+      "reverb": {
+        "wet": 0.18,
+        "decay": 2.2,
+        "predelay_ms": 22,
+        "brightness": 0.45
+      }
+    },
+    "chime": {
+      "dir": "chime",
+      "mioi": 2.4,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.36,
+        "decay": 3.0,
+        "predelay_ms": 28,
+        "brightness": 0.6
+      }
+    },
+    "sparkle": {
+      "dir": "sparkle",
+      "mioi": 1.6,
+      "gain": 0.46,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.3,
+        "decay": 2.4,
+        "predelay_ms": 20,
+        "brightness": 0.62
+      },
+      "delay": {
+        "ms": 280,
+        "feedback": 0.24,
+        "count": 3
+      }
+    },
+    "bloom": {
+      "dir": "bloom",
+      "mioi": 15,
+      "gain": 0.44,
+      "tonal_anchor_midi": 69,
+      "reverb": {
+        "wet": 0.5,
+        "decay": 5.0,
+        "predelay_ms": 45,
+        "brightness": 0.45
+      }
+    },
+    "cluster": {
+      "dir": "cluster",
+      "mioi": 20,
+      "gain": 0.5,
+      "reverb": {
+        "wet": 0.48,
+        "decay": 4.6,
+        "predelay_ms": 42,
+        "brightness": 0.48
+      }
+    },
+    "tap": {
+      "dir": "tap",
+      "mioi": 0.16,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 57,
+      "reverb": {
+        "wet": 0.05,
+        "decay": 0.6,
+        "predelay_ms": 8,
+        "brightness": 0.4
+      }
+    },
+    "chirp": {
+      "dir": "chirp",
+      "mioi": 0.35,
+      "gain": 0.52,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.12,
+        "decay": 1.6,
+        "predelay_ms": 12,
+        "brightness": 0.6
+      }
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "tap",
+      "by_tool": {
+        "Edit": "tap",
+        "Write": "tap",
+        "MultiEdit": "tap",
+        "NotebookEdit": "tap"
+      }
+    },
+    "PostToolUse": {
+      "default": "lead",
+      "by_tool": {
+        "Read": "tone",
+        "Grep": "tone",
+        "Glob": "tone"
+      },
+      "on_failure": "chime"
+    },
+    "Stop": {
+      "default": "chime"
+    },
+    "SessionStart": {
+      "default": "cluster"
+    },
+    "SessionEnd": {
+      "default": "bass"
+    },
+    "SubagentStop": {
+      "default": "lead2"
+    },
+    "UserPromptSubmit": {
+      "default": "tone"
+    },
+    "Notification": {
+      "default": "sparkle",
+      "on_failure": "chirp"
+    },
+    "PreCompact": {
+      "default": "bloom"
+    }
+  }
+}

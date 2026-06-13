@@ -1,0 +1,204 @@
+{
+  "name": "clayround",
+  "description": "A sweet ocarina singing round clay-flute melodies over a warm hill at dusk-bright. Round hollow ocarina tones, pure and soft-edged with a warm woody breath, answer a brighter clay-whistle counter-line over a low clay-jug floor. A warm low-ocarina holds the sweet hollow middle; high whistle-pings and tiny breath-flick glints sparkle on top; a soft layered-ocarina bloom and a breathy three-whistle cloud open lush over a gentle clay-breath texture, with a bright little birdlike chirp for an accent. A major pentatonic at A=432, additive and clean, room reverb, folk-bright and tender — every register covered, never thin, never dreary.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [
+    9,
+    4
+  ],
+  "scale_pitches": [
+    57,
+    59,
+    61,
+    64,
+    66,
+    69,
+    71,
+    73,
+    76,
+    78,
+    81
+  ],
+  "voices": {
+    "clayjug": {
+      "dir": "clayjug",
+      "mioi": 12,
+      "gain": 0.5,
+      "tonal_anchor_midi": 33,
+      "reverb": {
+        "wet": 0.10,
+        "decay": 1.8,
+        "predelay_ms": 14,
+        "brightness": 0.3
+      }
+    },
+    "ocarina": {
+      "dir": "ocarina",
+      "mioi": 2.2,
+      "gain": 0.5,
+      "tonal_anchor_midi": 69,
+      "reverb": {
+        "wet": 0.28,
+        "decay": 2.4,
+        "predelay_ms": 24,
+        "brightness": 0.5
+      },
+      "delay": {
+        "ms": 360,
+        "feedback": 0.18,
+        "count": 2
+      }
+    },
+    "whistle": {
+      "dir": "whistle",
+      "mioi": 2.2,
+      "gain": 0.46,
+      "tonal_anchor_midi": 76,
+      "reverb": {
+        "wet": 0.30,
+        "decay": 2.4,
+        "predelay_ms": 26,
+        "brightness": 0.55
+      },
+      "delay": {
+        "ms": 420,
+        "feedback": 0.2,
+        "count": 2
+      }
+    },
+    "lowcarina": {
+      "dir": "lowcarina",
+      "mioi": 2.6,
+      "gain": 0.46,
+      "tonal_anchor_midi": 57,
+      "reverb": {
+        "wet": 0.26,
+        "decay": 2.6,
+        "predelay_ms": 24,
+        "brightness": 0.42
+      }
+    },
+    "whistleping": {
+      "dir": "whistleping",
+      "mioi": 2.4,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.36,
+        "decay": 3.0,
+        "predelay_ms": 28,
+        "brightness": 0.6
+      }
+    },
+    "glint": {
+      "dir": "glint",
+      "mioi": 0.4,
+      "gain": 0.5,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.22,
+        "decay": 2.0,
+        "predelay_ms": 16,
+        "brightness": 0.6
+      },
+      "delay": {
+        "ms": 300,
+        "feedback": 0.22,
+        "count": 3
+      }
+    },
+    "claybloom": {
+      "dir": "claybloom",
+      "mioi": 16,
+      "gain": 0.42,
+      "tonal_anchor_midi": 69,
+      "reverb": {
+        "wet": 0.52,
+        "decay": 5.2,
+        "predelay_ms": 46,
+        "brightness": 0.48
+      }
+    },
+    "threewhistle": {
+      "dir": "threewhistle",
+      "mioi": 22,
+      "gain": 0.55,
+      "reverb": {
+        "wet": 0.50,
+        "decay": 5.0,
+        "predelay_ms": 44,
+        "brightness": 0.5
+      }
+    },
+    "claybreath": {
+      "dir": "claybreath",
+      "mioi": 0.5,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 57,
+      "reverb": {
+        "wet": 0.06,
+        "decay": 0.8,
+        "predelay_ms": 10,
+        "brightness": 0.35
+      }
+    },
+    "chirpflick": {
+      "dir": "chirpflick",
+      "mioi": 0.42,
+      "gain": 0.55,
+      "tonal_anchor_midi": 0,
+      "reverb": {
+        "wet": 0.12,
+        "decay": 1.6,
+        "predelay_ms": 12,
+        "brightness": 0.6
+      }
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "claybreath",
+      "by_tool": {
+        "Edit": "glint",
+        "Write": "glint",
+        "MultiEdit": "glint",
+        "NotebookEdit": "glint"
+      }
+    },
+    "PostToolUse": {
+      "default": "ocarina",
+      "by_tool": {
+        "Read": "lowcarina",
+        "Grep": "lowcarina",
+        "Glob": "lowcarina"
+      },
+      "on_failure": "whistleping"
+    },
+    "Stop": {
+      "default": "whistleping"
+    },
+    "SessionStart": {
+      "default": "threewhistle"
+    },
+    "SessionEnd": {
+      "default": "clayjug"
+    },
+    "SubagentStop": {
+      "default": "whistle"
+    },
+    "UserPromptSubmit": {
+      "default": "lowcarina"
+    },
+    "Notification": {
+      "default": "chirpflick",
+      "on_failure": "glint"
+    },
+    "PreCompact": {
+      "default": "claybloom"
+    }
+  }
+}

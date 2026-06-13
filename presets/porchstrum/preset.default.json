@@ -1,0 +1,129 @@
+{
+  "name": "porchstrum",
+  "description": "Banjo and ukulele plinking bright and playful on a sunny front porch. Plucked short-string folk tones — a round twangy banjo-bass bouncing the ground, a crisp banjo lead rolling the melody, a soft warm ukulele counter-line, a sweet muted middle, high harmonic pings and scattered top-string flicks, a lush rolled-uke bloom, a shimmering banjo-roll cascade, a chunky strum-mute pulse, and a grinning little uke chirp. A major pentatonic @ A=432, additive and clean, bouncy and grinning — cheerful, bright, pure good-time. Every register covered, never dreary, never harsh.",
+  "drone": null,
+  "master_gain": 0.45,
+  "drone_gain": 0.0,
+  "reverb_scale": 1.0,
+  "phrase_roots": [9, 4],
+  "scale_pitches": [57, 59, 61, 64, 66, 69, 71, 73, 76, 78, 81],
+  "voices": {
+    "banjobass": {
+      "dir": "banjobass",
+      "mioi": 1.6,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 33,
+      "reverb": {"wet": 0.12, "decay": 1.4, "predelay_ms": 12, "brightness": 0.32}
+    },
+    "banjolead": {
+      "dir": "banjolead",
+      "mioi": 0.55,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "reverb": {"wet": 0.20, "decay": 1.6, "predelay_ms": 18, "brightness": 0.6},
+      "delay": {"ms": 300, "feedback": 0.18, "count": 2}
+    },
+    "ukelead": {
+      "dir": "ukelead",
+      "mioi": 0.6,
+      "gain": 0.48,
+      "rate_jitter": true,
+      "reverb": {"wet": 0.18, "decay": 1.5, "predelay_ms": 16, "brightness": 0.5}
+    },
+    "mutedstring": {
+      "dir": "mutedstring",
+      "mioi": 0.5,
+      "gain": 0.48,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 57,
+      "reverb": {"wet": 0.16, "decay": 1.2, "predelay_ms": 12, "brightness": 0.4}
+    },
+    "banjoping": {
+      "dir": "banjoping",
+      "mioi": 1.8,
+      "gain": 0.48,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.34, "decay": 3.0, "predelay_ms": 26, "brightness": 0.62}
+    },
+    "topflick": {
+      "dir": "topflick",
+      "mioi": 0.4,
+      "gain": 0.46,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.22, "decay": 1.8, "predelay_ms": 14, "brightness": 0.62},
+      "delay": {"ms": 240, "feedback": 0.22, "count": 3}
+    },
+    "ukebloom": {
+      "dir": "ukebloom",
+      "mioi": 16,
+      "gain": 0.44,
+      "tonal_anchor_midi": 57,
+      "reverb": {"wet": 0.5, "decay": 5.0, "predelay_ms": 45, "brightness": 0.45},
+      "delay": {"ms": 420, "feedback": 0.18, "count": 2}
+    },
+    "banjoroll": {
+      "dir": "banjoroll",
+      "mioi": 8,
+      "gain": 0.48,
+      "reverb": {"wet": 0.46, "decay": 4.4, "predelay_ms": 36, "brightness": 0.6}
+    },
+    "strumtap": {
+      "dir": "strumtap",
+      "mioi": 0.14,
+      "gain": 0.5,
+      "rate_jitter": true,
+      "tonal_anchor_midi": 45,
+      "reverb": {"wet": 0.05, "decay": 0.6, "predelay_ms": 8, "brightness": 0.35}
+    },
+    "ukechirp": {
+      "dir": "ukechirp",
+      "mioi": 0.42,
+      "gain": 0.48,
+      "tonal_anchor_midi": 0,
+      "reverb": {"wet": 0.1, "decay": 1.4, "predelay_ms": 12, "brightness": 0.6}
+    }
+  },
+  "events": {
+    "PreToolUse": {
+      "default": "strumtap",
+      "by_tool": {
+        "Edit": "mutedstring",
+        "Write": "mutedstring",
+        "MultiEdit": "mutedstring",
+        "NotebookEdit": "mutedstring"
+      }
+    },
+    "PostToolUse": {
+      "default": "banjolead",
+      "by_tool": {
+        "Read": "ukelead",
+        "Grep": "ukelead",
+        "Glob": "ukelead"
+      },
+      "on_failure": "banjoping"
+    },
+    "Stop": {
+      "default": "banjoping"
+    },
+    "SessionStart": {
+      "default": "banjoroll"
+    },
+    "SessionEnd": {
+      "default": "banjobass"
+    },
+    "SubagentStop": {
+      "default": "topflick"
+    },
+    "UserPromptSubmit": {
+      "default": "ukelead"
+    },
+    "Notification": {
+      "default": "ukechirp",
+      "on_failure": "topflick"
+    },
+    "PreCompact": {
+      "default": "ukebloom"
+    }
+  }
+}
