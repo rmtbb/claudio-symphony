@@ -45,6 +45,7 @@ async function loadState() {
   const m = $('#master'); m.value = STATE.master_gain; setFill(m); $('#masterVal').textContent = fmt(STATE.master_gain, 2);
   setPower(!STATE.muted); document.body.classList.toggle('is-muted', STATE.muted);
   $('#npName').textContent = STATE.active;
+  paintDroneTop();
   renderRail();
 }
 function setPower(on) { const p = $('#power'); p.classList.toggle('on', on); p.classList.toggle('off', !on); p.querySelector('.lbl').textContent = on ? 'ON' : 'OFF'; }
@@ -991,6 +992,28 @@ function renderSettings() {
   wrap.appendChild(note);
 }
 
+/* always-visible drone toggle in the stage header (the easy switch — full
+   controls live in Setup). Shown whenever the ACTIVE preset has a drone. */
+function paintDroneTop() {
+  const w = $('#droneWrap'); if (!w) return;
+  const d = STATE.drone || {};
+  w.hidden = !d.available;
+  if (d.available) {
+    $('#droneTop').classList.toggle('on', !!d.running);
+    $('#droneTopVal').textContent = d.running ? 'humming' : 'off';
+  }
+}
+async function toggleDroneTop() {
+  const d = STATE.drone || {};
+  const on = !d.running;
+  const r = await api.post(on ? '/api/drone/start' : '/api/drone/stop', {});
+  if (r.drone) STATE.drone = r.drone;
+  if (on && r.ok === false) { toast(r.msg || 'no drone'); return; }
+  paintDroneTop();
+  const sp = $('.tabpanel[data-panel="setup"]'); if (sp && !sp.hidden) renderSettings();
+  toast(on ? 'drone <span class="g">on</span> — it follows your root' : 'drone off');
+}
+
 /* drone bed: on/off + gain + follow-the-chords. The drone always follows the
    live root note (mic-jam included) — retuning within ~½s, so you can hear
    the bed bend as you hum. Off by default; only presets with a drone qualify. */
@@ -1019,7 +1042,7 @@ function renderDrone(wrap) {
     const r = await api.post(on ? '/api/drone/start' : '/api/drone/stop', {});
     if (r.drone) STATE.drone = r.drone;
     if (on && r.ok === false) { toast(r.msg || 'no drone'); return; }
-    renderSettings();
+    renderSettings(); paintDroneTop();
     toast(on ? 'drone <span class="g">on</span> — it follows your root' : 'drone off');
   };
   fl.querySelector('#droneFollow').onclick = async (e) => {
@@ -1241,6 +1264,7 @@ function wireGlobal() {
   $('#optsModal').onclick = (e) => { if (e.target.id === 'optsModal') closeOpts(); };
   $$('#vizSwitch button').forEach(b => b.onclick = () => setViz(b.dataset.viz));
   // 🎤 Listen — quick tap latches on/off; press-and-hold = listen only while held
+  $('#droneTop').onclick = toggleDroneTop;
   const lb = $('#listenBtn'); let pressT = 0, wasOn = false;
   lb.addEventListener('pointerdown', (e) => {
     e.preventDefault();
@@ -1299,6 +1323,7 @@ function wireGlobal() {
 async function syncExternal() {
   const s = await api.get('/api/state');
   STATE.presets = s.presets; STATE.rules = s.rules; STATE.music = s.music; STATE.drone = s.drone;
+  paintDroneTop();
   if (s.active !== STATE.active) { STATE.active = s.active; $('#npName').textContent = s.active; }
   if (s.muted !== STATE.muted) { STATE.muted = s.muted; setPower(!s.muted); document.body.classList.toggle('is-muted', s.muted); }
   STATE.sessions = s.sessions;

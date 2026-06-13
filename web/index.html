@@ -72,6 +72,11 @@
           <div class="spacer"></div>
           <div class="session-strip" id="sessionStrip"></div>
           <div class="miniset">
+            <div class="knobwrap" id="droneWrap" hidden>
+              <label>drone bed</label>
+              <div class="toggle" id="droneTop" title="sustained bed — follows the root note live (🎤 too)"><span class="tk"></span></div>
+              <div class="val" id="droneTopVal" style="font:11px/1 var(--mono);color:var(--muted);text-align:center;margin-top:4px">off</div>
+            </div>
             <div class="knobwrap">
               <label>reverb space</label>
               <input type="range" class="r rev" id="reverbScale" min="0" max="2" step="0.05" style="width:120px">
