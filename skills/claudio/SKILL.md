@@ -1,0 +1,27 @@
+---
+name: claudio
+description: Use when the user wants to control or understand Claudio Symphony — the ambient music that plays on Claude Code hook events. Covers opening the live web console, switching the sound "preset"/room, muting, recording a clip, jamming with the mic, and troubleshooting silence. Triggers on "claudio", "the music", "change the sound", "open the console", "mute the sounds".
+---
+
+# Claudio Symphony
+
+Claudio turns Claude Code hook events into soft, in-key ambient music. It's installed as a plugin (hooks already wired) or via `./bin/claudio install`. The `claudio` CLI is on PATH when the plugin is active; otherwise call `./bin/claudio` from the repo.
+
+## Most common things people ask for
+
+- **Open the visual console** (the thing to look at): `claudio web` — a live constellation of glowing "voices" with 5 physics view modes, preset browser, mic-jam, and recording. Runs locally at `http://127.0.0.1:8788`.
+- **Change the sound / vibe**: `claudio preset use <name>` (e.g. `meadow`, `cathedral`, `rainfall`, `koto`, `studio`). List them with `claudio preset list`; hear them with `claudio audition`.
+- **Make it quieter / off**: `claudio volume 0.3`, or `claudio off` / `claudio on`.
+- **Turn on the drone bed**: `claudio drone on` (only some presets have one — `cathedral` does). It follows the key live.
+- **Record a clip to share**: `claudio record 30` (saves to `recordings/`), or hit **Rec** in `claudio web`.
+- **Jam with it**: open `claudio web`, hit **🎤 Listen**, and hum — it re-keys to your note. Headphones + Options → Mic monitor lets you play through its reverb.
+
+## If it's silent
+
+1. `claudio status` — shows whether it's on, the active preset, and whether hooks are wired.
+2. Samples render on first use. If a brand-new plugin install is silent, check `logs/SETUP_NEEDED.txt` — it usually means numpy is missing: `python3 -m pip install numpy`, then start a new session.
+3. Make sure it isn't muted (`claudio on`) and master volume is up.
+
+## Full command reference
+
+`claudio` with no args (or `claudio --help`) prints every command — per-voice tuning, event→sound mapping, scales, chord progressions, the MIDI jukebox, session replay, and directory routing rules. Prefer the web console (`claudio web`) for anything visual or exploratory.

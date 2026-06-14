@@ -144,16 +144,18 @@ Prefer buttons? Hit **● Rec** in `claudio web` — pick a length, optionally f
 
 ## 📦 Install
 
-### Easiest: let Claude Code install it for you
+### Easiest: as a Claude Code plugin (two lines)
 
-Paste this straight into Claude Code and let it do the work:
+Paste these into Claude Code:
 
 ```
-Please clone and install Claudio Symphony for me: https://github.com/rmtbb/claudio-symphony
-Clone the repo, run `python3 install.py`, then run `./bin/claudio install` to add the hooks
-to ~/.claude/settings.json. When it's done, tell me to start a new session, how to switch presets
-with `claudio preset use <name>`, and how to open the web UI with `claudio web`.
+/plugin marketplace add rmtbb/claudio-symphony
+/plugin install claudio-symphony
 ```
+
+That's it — the hooks wire themselves, and on your next session Claudio renders the default room and starts playing. The `claudio` command is on your PATH (`claudio web` opens the console). One prerequisite: **Python 3 with numpy** (`pip install numpy`); if it's missing, Claudio drops a one-line note in `logs/SETUP_NEEDED.txt` telling you exactly that.
+
+> Prefer to drive it by hand, or not using plugins? Use the manual install below — just don't do both (you'd get double sounds).
 
 ### Manual
 

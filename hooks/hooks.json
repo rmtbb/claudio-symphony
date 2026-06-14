@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "matcher": "*", "hooks": [
+        { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/bin/bootstrap.py\"" },
+        { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/event.py\"" }
+      ] }
+    ],
+    "SessionEnd":       [ { "matcher": "*", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/event.py\"" } ] } ],
+    "UserPromptSubmit": [ { "matcher": "*", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/event.py\"" } ] } ],
+    "PreToolUse":       [ { "matcher": "*", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/event.py\"" } ] } ],
+    "PostToolUse":      [ { "matcher": "*", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/event.py\"" } ] } ],
+    "SubagentStop":     [ { "matcher": "*", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/event.py\"" } ] } ],
+    "Stop":             [ { "matcher": "*", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/event.py\"" } ] } ],
+    "Notification":     [ { "matcher": "*", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/event.py\"" } ] } ],
+    "PreCompact":       [ { "matcher": "*", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/event.py\"" } ] } ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "claudio-symphony",
+  "description": "Ambient music that moves with your Claude Code session — every tool call, edit, and finished turn becomes a soft, in-key sound. 37 presets, a live web console, mic-jam, and more.",
+  "version": "1.0.0",
+  "author": { "name": "rmtbb" },
+  "homepage": "https://github.com/rmtbb/claudio-symphony",
+  "repository": { "type": "git", "url": "https://github.com/rmtbb/claudio-symphony" },
+  "license": "MIT",
+  "keywords": ["audio", "ambient", "music", "sonification", "hooks", "generative"]
+}
