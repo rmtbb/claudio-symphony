@@ -1400,7 +1400,7 @@ async function poll() {
   $('#pulse').classList.toggle('live', !!live);
   $('#pulseTxt').textContent = a.muted ? 'muted' : (live ? 'listening' : 'idle');
   Object.entries(a.voices).forEach(([vn, ts]) => { if (ts && ts !== lastVoiceTs[vn]) { if (lastVoiceTs[vn] !== undefined) { flare(vn); MIC.lastFire = performance.now(); } lastVoiceTs[vn] = ts; } paintDot($(`.vrow[data-voice="${cssEsc(vn)}"] .orb`), a.now - ts, true); });
-  Object.entries(a.events).forEach(([en, ts]) => { paintDot($(`.erow[data-event="${cssEsc(en)}"] .edot`), a.now - ts, false); });
+  Object.entries(a.events).forEach(([en, ts]) => { if (ts && ts !== lastEventTs[en]) { if (lastEventTs[en] !== undefined) eventFX(en); lastEventTs[en] = ts; } paintDot($(`.erow[data-event="${cssEsc(en)}"] .edot`), a.now - ts, false); });
   if (a.counts) { EVT_COUNTS = a.counts; paintFreq(); maybeSortEvents(); }
   // live replay state (button + playhead on the rail sparklines). The playhead
   // itself is animated client-side in animReplay — here we just feed it fresh
@@ -1502,6 +1502,58 @@ function spawnMotes(n, count) {
       r: (0.8 + Math.random() * 1.5) * DPR, ph: Math.random() * 7 });
   }
 }
+/* ---- event-aware FX: the visuals narrate WHAT Claude did, not just that a
+   voice fired. A finished turn (Stop) breaks like a wave of light; a sub-agent
+   return is a smaller echo; "needs you" pulses the edges; session start/end
+   sweep and fade. Drawn as a full-canvas overlay so it works in every mode. */
+let FX = [];
+const EVENT_FX = {
+  Stop:         { type: 'shock',   big: true, veil: 0.14, life: 2300, col: () => ACCENT.hi },
+  SubagentStop: { type: 'shock',              life: 1500, col: () => '#8fc0a6' },
+  Notification: { type: 'edge',               life: 1500, col: () => '#e58c66' },
+  SessionStart: { type: 'sweep',              life: 1700, col: () => ACCENT.gold },
+  SessionEnd:   { type: 'veil',               life: 1700, col: () => '#8ab6d6' },
+  PreCompact:   { type: 'implode',            life: 1300, col: () => '#b39ddb' },
+};
+function eventFX(name) {
+  const d = EVENT_FX[name]; if (!d) return;            // tool calls stay calm so big moments pop
+  ENERGY = Math.min(1, ENERGY + (d.big ? 0.45 : 0.2));
+  FX.push({ type: d.type, big: !!d.big, veil: d.veil || 0, life: d.life, col: d.col(), t0: performance.now() });
+  if (FX.length > 24) FX.shift();
+}
+function drawFX(now) {
+  if (!FX.length) return;
+  const W = sky.width, H = sky.height, diag = Math.hypot(W, H);
+  FX = FX.filter(f => now - f.t0 < f.life);
+  FX.forEach(f => {
+    const p = (now - f.t0) / f.life, e = 1 - (1 - p) * (1 - p);   // ease-out
+    if (f.type === 'shock') {
+      const maxR = diag * (f.big ? 0.6 : 0.34), rad = e * maxR;
+      if (f.veil) { ctx.fillStyle = hexA(f.col, f.veil * (1 - p) * (1 - p)); ctx.fillRect(0, 0, W, H); }
+      ctx.strokeStyle = hexA(f.col, (1 - p) * (f.big ? 0.55 : 0.4)); ctx.lineWidth = (1 - p) * (f.big ? 6 : 3) * DPR + 0.5;
+      ctx.beginPath(); ctx.arc(SKY.cx, SKY.cy, rad, 0, 7); ctx.stroke();
+      ctx.strokeStyle = hexA(f.col, (1 - p) * 0.22); ctx.lineWidth = (1 - p) * 2 * DPR + 0.4;
+      ctx.beginPath(); ctx.arc(SKY.cx, SKY.cy, rad * 0.62, 0, 7); ctx.stroke();
+    } else if (f.type === 'edge') {
+      const a = Math.sin(p * Math.PI) * 0.55;
+      const g = ctx.createRadialGradient(SKY.cx, SKY.cy, W * 0.18, SKY.cx, SKY.cy, W * 0.62);
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, hexA(f.col, a));
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    } else if (f.type === 'sweep') {
+      const x = e * W, w = W * 0.16;
+      const g = ctx.createLinearGradient(x - w, 0, x + w, 0);
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.5, hexA(f.col, (1 - p) * 0.22)); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    } else if (f.type === 'veil') {
+      ctx.fillStyle = hexA(f.col, Math.sin(p * Math.PI) * 0.13); ctx.fillRect(0, 0, W, H);
+    } else if (f.type === 'implode') {
+      const rad = (1 - e) * diag * 0.5;
+      ctx.strokeStyle = hexA(f.col, (1 - p) * 0.45); ctx.lineWidth = 2 * DPR;
+      ctx.beginPath(); ctx.arc(SKY.cx, SKY.cy, rad, 0, 7); ctx.stroke();
+    }
+  });
+}
+
 function skyHit(e) {
   const r = sky.getBoundingClientRect(); const mx = (e.clientX - r.left) * DPR, my = (e.clientY - r.top) * DPR;
   let hit = null, hd = 1e9;
@@ -1513,7 +1565,8 @@ function skyHit(e) {
   nodes.forEach(n => { const d = Math.hypot(n.x - mx, n.y - my); if (d < hd) { hd = d; hit = n; } });
   return (hit && hd < 26 * DPR) ? hit : null;
 }
-sky.addEventListener('click', (e) => { const hit = skyHit(e); if (hit) { api.post('/api/voice/play', { preset: editPreset(), voice: hit.name }); flare(hit.name); toast(`<span class="g">${hit.name}</span>`); scrollFlashVoice(hit.name); } });
+// canvas click = hear it + bloom it, nothing else (never scrolls the page)
+sky.addEventListener('click', (e) => { const hit = skyHit(e); if (hit) { api.post('/api/voice/play', { preset: editPreset(), voice: hit.name }); flare(hit.name); toast(`<span class="g">${hit.name}</span> · tune it in the Sounds tab`); } });
 let hover = null;
 sky.addEventListener('mousemove', (e) => { hover = skyHit(e); sky.style.cursor = hover ? 'pointer' : 'default'; });
 const VIZ_HINTS = {
@@ -1545,6 +1598,7 @@ function drawSky(t) {
     else if (OPTS.viz === 'gravity') drawGravity(t, now, lv, breath);
     else drawOrbs(t, now, lv, breath);
   }
+  drawFX(now);                                         // event-aware overlay, every mode
   requestAnimationFrame(drawSky);
 }
 
