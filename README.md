@@ -89,7 +89,7 @@ claudio web      # opens a local, no-deps control panel in your browser
 A "warm nocturne observatory" you'll actually want to leave open:
 
 - 🌠 **A living constellation** — each voice is a glowing orb in a slow-drifting galaxy that **blooms in real time** the instant Claude triggers it — and when one bursts, it *pushes* its neighbours, so the whole sky wobbles like one fabric. Watch your session play itself.
-- 🌊 **Three ways to watch** — hover the canvas for the ✦ ◍ ≈ switcher: the orb **constellation**, a **still pond** where every sound rings out as a slow ripple, or **flowing tides** where each voice is a silk ribbon and a swell travels its length when it sings.
+- 🌊 **Five ways to watch** — hover the canvas for the ✦ ◍ ≈ ❋ ✸ switcher: the orb **constellation** (orbs bloom and nudge their neighbours), a **still pond** of ripples, **flowing tides** of silk ribbons, a **flow field** that sprays particles into a drifting current, and **gravity** where each voice is a star and sounds fling orbiters that slingshot around it — all real-time physics.
 - 🎚️ **Tune anything live** — per-voice gain, reverb, echo; remap any event; switch presets; set per-session rules — all written to the same files the CLI and hooks read, so every change is instant.
 - 🔊 **The Sounds tab puts cause and effect in one view** — "Claude does this → you hear that" up top, the full voice rack right below. Hover any event and hit **✎** to jump straight to that voice's controls; clicking a constellation orb does the same. Three tabs total: **Sounds · Music · Setup**.
 - 🔭 **Browse 37 presets** in a searchable gallery, audition with one click.

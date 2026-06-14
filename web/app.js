@@ -191,7 +191,7 @@ function renderStage() {
     : `tuning ${DETAIL.name}${s && s.source ? ` · resolved via ${s.source}` : ''} — ${DETAIL.description || ''}`.slice(0, 150);
   renderSessionStrip();
   const rs = $('#reverbScale'); rs.value = DETAIL.reverb_scale ?? 1; setFill(rs); $('#reverbScaleVal').textContent = fmt(rs.value, 2) + '×';
-  $('#voiceHint').textContent = `${DETAIL.voices.length} voices · ${DETAIL.scale_pitches.length} notes`;
+  $('#voiceHint').textContent = `the ${DETAIL.voices.length} instruments in this room — drag to shape each`;
   $('#musicScaleHint').textContent = isGlobal ? 'global default key' : 'global default (override per-session at right)';
   renderVoices(); renderEvents(); renderMusic(); renderActions(); renderSettings(); renderRules();
 }
@@ -551,6 +551,23 @@ function openHelp() {
 function closeHelp() { $('#helpModal').hidden = true; }
 
 /* ---------------- jukebox: perform a MIDI through the preset (easter egg) ---------------- */
+// Plain-language for Claude Code's hook events — newcomers shouldn't have to
+// know the API names. title = what shows; tech = the raw hook name (small);
+// desc = a one-liner so nobody has to guess what triggers it.
+const EVENT_INFO = {
+  SessionStart:     { title: 'Session starts',        tech: 'SessionStart',     desc: 'Claude Code opens in a project' },
+  UserPromptSubmit: { title: 'You send a message',    tech: 'UserPromptSubmit', desc: 'every time you hit enter' },
+  PreToolUse:       { title: 'Before a tool runs',    tech: 'PreToolUse',       desc: 'Claude is about to read, edit, or run something' },
+  PostToolUse:      { title: 'After a tool runs',     tech: 'PostToolUse',      desc: 'a read / edit / command just finished' },
+  SubagentStop:     { title: 'A sub-agent finishes',  tech: 'SubagentStop',     desc: 'a helper task Claude spawned returns' },
+  Stop:             { title: 'Claude finishes',       tech: 'Stop',             desc: 'the reply is done — your move' },
+  SessionEnd:       { title: 'Session ends',          tech: 'SessionEnd',       desc: 'the Claude Code session closes' },
+  Notification:     { title: 'Claude needs you',      tech: 'Notification',     desc: 'waiting on input or permission' },
+  PreCompact:       { title: 'Before summarizing',    tech: 'PreCompact',       desc: 'the conversation is being compacted' },
+};
+const evTitle = (e) => (EVENT_INFO[e] && EVENT_INFO[e].title) || e;
+const evDesc  = (e) => (EVENT_INFO[e] && EVENT_INFO[e].desc) || '';
+// kept for the jukebox's compact channel labels
 const EVENT_LABELS = {
   PostToolUse: 'after a tool', Stop: 'turn ends', PreToolUse: 'before a tool',
   UserPromptSubmit: 'you prompt', Notification: 'notification', SubagentStop: 'subagent ends',
@@ -858,16 +875,16 @@ function renderVoices() {
     const col = PALETTE[i % PALETTE.length]; const di = delayIdx(v.delay);
     row.innerHTML = `
       <span class="orb" style="--c:${col}"></span>
-      <span class="vname" title="play ${v.name}">${v.name}</span>
+      <span class="vname" title="click to hear ${v.name}">${v.name}</span>
       <div class="controls">
-        <div class="ctl"><span class="k">vol</span><input type="range" class="r gain" min="0" max="1" step="0.01" value="${v.gain}"><span class="val gv">${fmt(v.gain,2)}</span></div>
-        <div class="ctl"><span class="k">rev</span><input type="range" class="r rev wet" min="0" max="1" step="0.01" value="${v.reverb.wet||0}"><span class="val wv">${fmt(v.reverb.wet||0,2)}</span></div>
-        <div class="ctl"><span class="k">rate</span><input class="numbox mioi" type="number" min="0.02" max="60" step="0.05" value="${v.mioi}" title="min seconds between fires"><span class="k">s</span></div>
-        <div class="ctl"><span class="k">echo</span><div class="chips">${DELAYS.map((o,j)=>`<button class="dchip${j===di?' on':''}" data-j="${j}">${o.label}</button>`).join('')}</div></div>
-        <div class="ctl"><span class="k">jit</span><div class="toggle mini${v.rate_jitter?' on':''}" title="pitch jitter"><span class="tk"></span></div></div>
+        <div class="ctl"><span class="k" title="how loud this sound is">volume</span><input type="range" class="r gain" min="0" max="1" step="0.01" value="${v.gain}" title="how loud this sound is"><span class="val gv">${fmt(v.gain,2)}</span></div>
+        <div class="ctl"><span class="k" title="echoey space / wash around the sound">reverb</span><input type="range" class="r rev wet" min="0" max="1" step="0.01" value="${v.reverb.wet||0}" title="echoey space / wash around the sound"><span class="val wv">${fmt(v.reverb.wet||0,2)}</span></div>
+        <div class="ctl"><span class="k" title="shortest gap between repeats — higher = sparser">min gap</span><input class="numbox mioi" type="number" min="0.02" max="60" step="0.05" value="${v.mioi}" title="shortest gap between repeats, in seconds"><span class="k">s</span></div>
+        <div class="ctl"><span class="k" title="trailing repeats, like a delay pedal">echo</span><div class="chips">${DELAYS.map((o,j)=>`<button class="dchip${j===di?' on':''}" data-j="${j}" title="${o.label} echo">${o.label}</button>`).join('')}</div></div>
+        <div class="ctl"><span class="k" title="tiny random pitch wobble so repeats feel alive, not robotic">wobble</span><div class="toggle mini${v.rate_jitter?' on':''}" title="tiny random pitch wobble so repeats feel alive"><span class="tk"></span></div></div>
       </div>
-      <button class="vswap" title="swap this voice's sound">↺</button>
-      <button class="vplay" title="play">▶</button>`;
+      <button class="vswap" title="swap in a different sound for this voice">↺ swap</button>
+      <button class="vplay" title="hear this voice">▶</button>`;
     const g = row.querySelector('.gain'); setFill(g);
     g.oninput = () => { row.querySelector('.gv').textContent = fmt(g.value,2); setFill(g); };
     g.onchange = () => api.post('/api/voice', { preset: P, voice: v.name, field: 'gain', value: +g.value });
@@ -913,9 +930,9 @@ function renderEvents() {
     .concat(DETAIL.voice_names.map(n => `<option ${n === sel ? 'selected' : ''}>${n}</option>`)).join('');
 
   const tools = document.createElement('div'); tools.className = 'etools';
-  tools.innerHTML = `<span class="etools-note">brighter = fired recently · bar = how often</span>
-    <button class="esort${SORT_BY_FREQ ? ' on' : ''}" id="esort" title="sort by how often each event fires">↕ most fired</button>
-    <button class="ereset" id="ereset" title="reset the fire counters">reset counts</button>`;
+  tools.innerHTML = `<span class="etools-note">each row is a moment in Claude's work → the sound it plays. A dot glows when it just fired; the bar shows how often.</span>
+    <button class="esort${SORT_BY_FREQ ? ' on' : ''}" id="esort" title="reorder with the most-used events on top">↕ most used</button>
+    <button class="ereset" id="ereset" title="reset the usage bars to zero">reset</button>`;
   tools.querySelector('#esort').onclick = () => { SORT_BY_FREQ = !SORT_BY_FREQ; renderEvents(); };
   tools.querySelector('#ereset').onclick = async () => { await api.post('/api/counts/reset', { name: P }); EVT_COUNTS = {}; toast('fire counts reset'); paintFreq(); };
   wrap.appendChild(tools);
@@ -926,14 +943,14 @@ function renderEvents() {
   evs.forEach(ev => {
     const g = document.createElement('div'); g.className = 'egroup'; g.dataset.event = ev.event;
     const row = document.createElement('div'); row.className = 'erow'; row.dataset.event = ev.event;
-    row.innerHTML = `<span class="edot"></span><span class="elabel" title="click to hear it"><span class="ename">${ev.event}</span><span class="ecount" data-event="${ev.event}"></span></span><select class="vsel ${ev.default==null?'silent':''}">${opts(ev.default)}</select><button class="ejump" title="tune this voice ↓">✎</button><i class="efreq" data-event="${ev.event}"></i>`;
+    row.innerHTML = `<span class="edot"></span><span class="elabel" title="click to preview this sound"><span class="ename">${evTitle(ev.event)}</span><span class="edesc">${evDesc(ev.event)}</span><span class="etech">${ev.event}</span><span class="ecount" data-event="${ev.event}"></span></span><select class="vsel ${ev.default==null?'silent':''}" title="the sound this moment plays">${opts(ev.default)}</select><button class="ejump" title="open this sound's controls below">✎</button><i class="efreq" data-event="${ev.event}"></i>`;
     row.querySelector('select').onchange = e => { api.post('/api/map', { preset: P, event: ev.event, key: 'default', voice: e.target.value }); e.target.classList.toggle('silent', e.target.value === '__none__'); };
     row.querySelector('.elabel').onclick = () => playMapped(row, ev.event);
     row.querySelector('.ejump').onclick = () => scrollFlashVoice(row.querySelector('select').value);
     g.appendChild(row);
     Object.entries(ev.by_tool).forEach(([tool, voice]) => {
       const sr = document.createElement('div'); sr.className = 'erow sub';
-      sr.innerHTML = `<span></span><span class="elabel" title="click to hear it"><span class="ename">${tool}</span><span class="ekey">by-tool</span></span><select class="vsel ${voice==null?'silent':''}">${opts(voice)}</select><button class="ejump" title="tune this voice ↓">✎</button>`;
+      sr.innerHTML = `<span></span><span class="elabel" title="click to preview this sound"><span class="ename">only the ${tool} tool</span><span class="ekey">override</span></span><select class="vsel ${voice==null?'silent':''}" title="a special sound just for the ${tool} tool">${opts(voice)}</select><button class="ejump" title="open this sound's controls below">✎</button>`;
       sr.querySelector('select').onchange = e => api.post('/api/map', { preset: P, event: ev.event, key: tool, voice: e.target.value });
       sr.querySelector('.elabel').onclick = () => playMapped(sr, tool);
       sr.querySelector('.ejump').onclick = () => scrollFlashVoice(sr.querySelector('select').value);
@@ -942,7 +959,7 @@ function renderEvents() {
     if (ev.on_failure !== null && ev.on_failure !== undefined) {
       const ofv = ev.on_failure === '__none__' ? null : ev.on_failure;
       const sr = document.createElement('div'); sr.className = 'erow sub';
-      sr.innerHTML = `<span></span><span class="elabel" title="click to hear it"><span class="ename">on failure</span><span class="ekey">fallback</span></span><select class="vsel ${ofv==null?'silent':''}">${opts(ofv)}</select><button class="ejump" title="tune this voice ↓">✎</button>`;
+      sr.innerHTML = `<span></span><span class="elabel" title="click to preview this sound"><span class="ename">…but if it failed</span><span class="ekey">on error</span></span><select class="vsel ${ofv==null?'silent':''}" title="plays instead when the tool errored">${opts(ofv)}</select><button class="ejump" title="open this sound's controls below">✎</button>`;
       sr.querySelector('select').onchange = e => api.post('/api/map', { preset: P, event: ev.event, key: 'on_failure', voice: e.target.value });
       sr.querySelector('.elabel').onclick = () => playMapped(sr, 'on failure');
       sr.querySelector('.ejump').onclick = () => scrollFlashVoice(sr.querySelector('select').value);
@@ -1059,7 +1076,7 @@ function renderDrone(wrap) {
 function renderMusic() {
   const m = STATE.music || {}; const sw = $('#musicScale'); sw.innerHTML = '';
   const f = document.createElement('div'); f.className = 'field';
-  f.innerHTML = `<div class="flab">Global scale<small>re-keys everything when no session override</small></div>
+  f.innerHTML = `<div class="flab">Scale<small>the set of notes everything is allowed to play — the room's mood</small></div>
     <div class="fctl"><select class="vsel" id="scaleSel"><option value="__none__"${!m.scale_global?' selected':''}>preset default</option>
       ${(m.scales||[]).map(s => `<option ${s===m.scale_global?'selected':''}>${s}</option>`).join('')}</select></div>`;
   f.querySelector('#scaleSel').onchange = e => { api.post('/api/scale', { name: e.target.value === '__none__' ? null : e.target.value }); toast(`global scale → ${e.target.value === '__none__' ? 'preset default' : e.target.value}`); };
@@ -1087,7 +1104,7 @@ function renderMusic() {
   const rw = $('#musicRhythm'); rw.innerHTML = '';
   const q = m.quant || { enabled: false, bpm: 120, grid: 0.5 };
   const qf = document.createElement('div'); qf.className = 'field';
-  qf.innerHTML = `<div class="flab">Quantize<small>snap triggers to a tempo grid</small></div><div class="fctl">
+  qf.innerHTML = `<div class="flab">Snap to a beat<small>line sounds up to a tempo instead of free-time (a.k.a. quantize)</small></div><div class="fctl">
     <input class="numbox" id="qbpm" type="number" min="30" max="300" step="1" value="${q.bpm}" title="bpm">
     <select class="vsel" id="qgrid" style="min-width:90px">${[[0.25,'16th'],[0.5,'8th'],[1,'quarter'],[2,'half']].map(([v,l])=>`<option value="${v}" ${+q.grid===v?'selected':''}>${l}</option>`).join('')}</select>
     <div class="toggle${q.enabled?' on':''}" id="qtoggle"><span class="tk"></span></div></div>`;
@@ -1262,6 +1279,11 @@ function wireGlobal() {
   $('#optsBtn').onclick = openOpts;
   $('#optsClose').onclick = closeOpts;
   $('#optsModal').onclick = (e) => { if (e.target.id === 'optsModal') closeOpts(); };
+  // first-run welcome — show once, reopenable from the ⋯ menu
+  $('#welBtn').onclick = openWelcome;
+  $('#welGo').onclick = closeWelcome;
+  $('#welcome').onclick = (e) => { if (e.target.id === 'welcome') closeWelcome(); };
+  if (!localStorage.getItem('claudio_welcomed')) setTimeout(openWelcome, 500);
   $$('#vizSwitch button').forEach(b => b.onclick = () => setViz(b.dataset.viz));
   // 🎤 Listen — quick tap latches on/off; press-and-hold = listen only while held
   $('#droneTop').onclick = toggleDroneTop;
@@ -1302,6 +1324,7 @@ function wireGlobal() {
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     if (!$('#ofMenu').hidden) $('#ofMenu').hidden = true;
+    else if (!$('#welcome').hidden) closeWelcome();
     else if (!$('#optsModal').hidden) closeOpts();
     else if (!$('#swap').hidden) closeSwap();
     else if (!$('#builder').hidden) closeBuilder();
@@ -1432,17 +1455,34 @@ let SKY = { cx: 0, cy: 0, sx: 1, sy: 1 };
 function layoutNodes() { const W = sky.width, H = sky.height; SKY.cx = W / 2; SKY.cy = H * 0.5; const GA = Math.PI * (3 - Math.sqrt(5)); const maxR = Math.sqrt(Math.max(1, nodes.length - 1) + 0.6); SKY.sx = (W * 0.40) / maxR; SKY.sy = (H * 0.34) / maxR; nodes.forEach((n, i) => { n.rad = Math.sqrt(i + 0.6); n.ang = i * GA - Math.PI / 2; }); }
 /* activity energy: every fire feeds it, it decays slowly — the aurora, web
    brightness and node swell all breathe with how busy the session actually is */
-let MOTES = [], ENERGY = 0, nextGlint = 0;
+let MOTES = [], PARTS = [], ENERGY = 0, nextGlint = 0;
 function vizLevel() { return Math.min(1, OPTS.energy); }
 function flare(name) { const n = nodes.find(x => x.name === name); if (!n) return;
   n.fire = 1;
   ENERGY = Math.min(1, ENERGY + 0.16);
+  const now = performance.now();
   if (OPTS.viz === 'tides') {                       // a swell sets off along this voice's ribbon
-    if (n.pulses.length < 6) n.pulses.push({ t0: performance.now() });
+    if (n.pulses.length < 6) n.pulses.push({ t0: now });
     return;
   }
   if (OPTS.viz === 'pond') {                        // one big slow ripple on the water
-    rings.push({ x: n.x, y: n.y, t: performance.now(), col: n.col, r0: 2 * DPR, life: 3600, grow: 120 });
+    rings.push({ x: n.x, y: n.y, t: now, col: n.col, r0: 2 * DPR, life: 3600, grow: 120 });
+    return;
+  }
+  if (OPTS.viz === 'flow') {                        // inject bright particles into the current
+    for (let i = 0; i < 10 && PARTS.length < 240; i++) {
+      const a = Math.random() * 6.283, s = (0.5 + Math.random()) * DPR;
+      PARTS.push({ kind: 'jet', x: n.x, y: n.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+        t0: now, life: 2200 + Math.random() * 1800, col: n.col, tr: [] });
+    }
+    return;
+  }
+  if (OPTS.viz === 'gravity') {                     // fling orbiters that the wells catch
+    for (let i = 0; i < 16 && PARTS.length < 260; i++) {
+      const a = (i / 16) * 6.283 + Math.random() * 0.4, s = (2.2 + Math.random() * 2.2) * DPR;
+      PARTS.push({ x: n.x, y: n.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+        t0: now, life: 5200 + Math.random() * 3000, col: n.col, tr: [] });
+    }
     return;
   }
   rings.push({ x: n.x, y: n.y, t: performance.now(), col: n.col, r0: n.base * DPR });
@@ -1477,16 +1517,18 @@ sky.addEventListener('click', (e) => { const hit = skyHit(e); if (hit) { api.pos
 let hover = null;
 sky.addEventListener('mousemove', (e) => { hover = skyHit(e); sky.style.cursor = hover ? 'pointer' : 'default'; });
 const VIZ_HINTS = {
-  orbs:  'live voices · click an orb to hear it · orbs bloom as Claude plays',
-  pond:  'still pond · every sound is a ripple · click a seed to hear it',
-  tides: 'flowing tides · each ribbon is a voice · click one to hear it',
+  orbs:    'each orb is a voice · it blooms (and nudges its neighbours) when Claude plays it · click to hear it',
+  pond:    'still water · every sound rings out as a ripple · click a seed to hear it',
+  tides:   'each ribbon is a voice · a swell rolls down it when it sounds · click one to hear it',
+  flow:    'a flowing current · each sound sprays particles that ride the stream · click a source to hear it',
+  gravity: 'each voice is a star with real pull · sounds fling orbiters that slingshot around them · click a star to hear it',
 };
 function setViz(v) {
   if (!VIZ_HINTS[v]) v = 'orbs';
   OPTS.viz = v; saveOpts();
   $$('#vizSwitch button').forEach(b => b.classList.toggle('on', b.dataset.viz === v));
   $('#constHint').textContent = VIZ_HINTS[v];
-  MOTES = []; rings = [];                              // clean slate between worlds
+  MOTES = []; rings = []; PARTS = [];                  // clean slate between worlds
   nodes.forEach(n => { n.ox = n.oy = n.ovx = n.ovy = 0; n.pulses = []; });
 }
 function startSky() { resizeSky(); setViz(OPTS.viz); requestAnimationFrame(drawSky); }
@@ -1495,9 +1537,87 @@ function drawSky(t) {
   const breath = 0.5 + 0.5 * Math.sin(t / 2600);
   ENERGY *= 0.994;                                     // slow exhale (~2s half-life)
   const lv = vizLevel(), now = performance.now();
-  if (OPTS.viz === 'tides') drawTides(t, now, lv, breath);
-  else { positionNodes(t); if (OPTS.viz === 'pond') drawPond(t, now, lv, breath); else drawOrbs(t, now, lv, breath); }
+  if (OPTS.viz === 'tides') { drawTides(t, now, lv, breath); }
+  else {
+    positionNodes(t);
+    if (OPTS.viz === 'pond') drawPond(t, now, lv, breath);
+    else if (OPTS.viz === 'flow') drawFlow(t, now, lv, breath);
+    else if (OPTS.viz === 'gravity') drawGravity(t, now, lv, breath);
+    else drawOrbs(t, now, lv, breath);
+  }
   requestAnimationFrame(drawSky);
+}
+
+/* trail polyline helper — fading line through a particle's recent points */
+function drawTrail(tr, col, a, w) {
+  if (tr.length < 4) return;
+  ctx.strokeStyle = hexA(col, a); ctx.lineWidth = w; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(tr[0], tr[1]);
+  for (let i = 2; i < tr.length; i += 2) ctx.lineTo(tr[i], tr[i + 1]);
+  ctx.stroke();
+}
+function nodeSourcesAndHover(now) {
+  nodes.forEach(n => { n.fire *= 0.93; const isH = hover === n;
+    ctx.fillStyle = hexA(n.col, 0.25 + n.fire * 0.7 + (isH ? .4 : 0));
+    ctx.beginPath(); ctx.arc(n.x, n.y, (3 + n.fire * 5) * DPR, 0, 7); ctx.fill();
+    if (isH || n.fire > 0.3) { ctx.font = `${10 * DPR}px 'Space Mono', monospace`; ctx.textAlign = 'center';
+      ctx.fillStyle = hexA('#f5ecdd', isH ? .95 : n.fire); ctx.fillText(n.name, n.x, n.y - 11 * DPR); } });
+}
+
+/* flow: a curl-noise current fills the field; voices live as faint sources and
+   each sound injects a bright spray of particles that ride the stream and fade.
+   The field itself slowly turns, so it's never the same picture twice. */
+function drawFlow(t, now, lv, breath) {
+  const W = sky.width, H = sky.height, sc = 0.0017 / DPR, ts = t * 0.00015;
+  const field = (x, y) => (Math.sin(x * sc + ts) + Math.cos(y * sc * 1.1 - ts * 0.8)
+    + 0.5 * Math.sin((x + y) * sc * 0.6 + ts * 1.4)) * Math.PI;
+  const target = Math.round(70 * lv);
+  let amb = 0; PARTS.forEach(p => { if (p.kind === 'amb') amb++; });
+  while (amb < target) { PARTS.push({ kind: 'amb', x: Math.random() * W, y: Math.random() * H, vx: 0, vy: 0, col: ACCENT.gold, tr: [] }); amb++; }
+  PARTS = PARTS.filter(p => p.kind === 'amb' || now - p.t0 < p.life);
+  PARTS.forEach(p => {
+    const ang = field(p.x, p.y), sp = (p.kind === 'amb' ? 0.85 : 1.3) * DPR;
+    p.vx += (Math.cos(ang) * sp - p.vx) * 0.14; p.vy += (Math.sin(ang) * sp - p.vy) * 0.14;
+    p.x += p.vx; p.y += p.vy;
+    p.tr.push(p.x, p.y); if (p.tr.length > 16) p.tr.splice(0, 2);
+    if (p.x < -12 || p.x > W + 12 || p.y < -12 || p.y > H + 12) {
+      if (p.kind === 'amb') { p.x = Math.random() * W; p.y = Math.random() * H; p.tr.length = 0; }
+      else p.t0 = 0;       // burst that left the field → retire next filter
+    }
+    const age = p.kind === 'amb' ? 0 : (now - p.t0) / p.life;
+    const a = (p.kind === 'amb' ? 0.16 + 0.12 * ENERGY : 0.85 * (1 - age)) * lv;
+    drawTrail(p.tr, p.col, a, (p.kind === 'amb' ? 1 : 1.8) * DPR);
+    if (p.kind !== 'amb') { ctx.fillStyle = hexA(p.col, a); ctx.beginPath(); ctx.arc(p.x, p.y, 1.6 * DPR, 0, 7); ctx.fill(); }
+  });
+  nodeSourcesAndHover(now);
+}
+
+/* gravity: each voice is a star with real pull; a sound flings orbiters that
+   curve, slingshot and settle into arcs around the wells (softened 1/r²). */
+function drawGravity(t, now, lv, breath) {
+  const W = sky.width, H = sky.height, G = 90 * DPR * DPR, soft = (46 * DPR) ** 2, maxv = 6 * DPR;
+  PARTS = PARTS.filter(p => now - p.t0 < p.life && p.x > -60 && p.x < W + 60 && p.y > -60 && p.y < H + 60);
+  PARTS.forEach(p => {
+    let ax = 0, ay = 0;
+    for (const nd of nodes) { const dx = nd.x - p.x, dy = nd.y - p.y, r2 = dx * dx + dy * dy + soft, inv = 1 / Math.sqrt(r2), f = G / r2; ax += dx * inv * f; ay += dy * inv * f; }
+    p.vx = (p.vx + ax) * 0.9992; p.vy = (p.vy + ay) * 0.9992;
+    const sp = Math.hypot(p.vx, p.vy); if (sp > maxv) { p.vx *= maxv / sp; p.vy *= maxv / sp; }
+    p.x += p.vx; p.y += p.vy;
+    p.tr.push(p.x, p.y); if (p.tr.length > 20) p.tr.splice(0, 2);
+    const age = (now - p.t0) / p.life, a = (age < 0.85 ? 1 : (1 - age) / 0.15) * 0.8 * lv;
+    drawTrail(p.tr, p.col, a * 0.7, 1.5 * DPR);
+    ctx.fillStyle = hexA(p.col, a); ctx.beginPath(); ctx.arc(p.x, p.y, 1.7 * DPR, 0, 7); ctx.fill();
+  });
+  // wells: a soft glow + bright core, brighter on fire
+  nodes.forEach(n => { n.fire *= 0.95; const isH = hover === n; const rr = (n.base * 0.7 + n.fire * 5) * DPR;
+    const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, rr * 5); g.addColorStop(0, hexA(n.col, 0.45 + n.fire * 0.4)); g.addColorStop(1, hexA(n.col, 0));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(n.x, n.y, rr * 5, 0, 7); ctx.fill();
+    ctx.fillStyle = hexA('#fff7e6', 0.7 + n.fire * 0.3); ctx.beginPath(); ctx.arc(n.x, n.y, rr * 0.5, 0, 7); ctx.fill();
+    if (isH || n.fire > 0.3) { ctx.font = `${10 * DPR}px 'Space Mono', monospace`; ctx.textAlign = 'center';
+      ctx.fillStyle = hexA('#f5ecdd', isH ? .95 : n.fire); ctx.fillText(n.name, n.x, n.y - rr - 6 * DPR); } });
+  if (t > nextGlint) { nextGlint = t + 5000 + Math.random() * 7000;   // keep the system alive when idle
+    if (lv > 0 && nodes.length && PARTS.length < 30) { const n = nodes[(Math.random() * nodes.length) | 0]; n.fire = Math.max(n.fire, 0.4);
+      for (let i = 0; i < 10; i++) { const a = Math.random() * 6.283, s = (2.4 + Math.random() * 2) * DPR; PARTS.push({ x: n.x, y: n.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t0: now, life: 6000, col: n.col, tr: [] }); } } }
 }
 
 /* shared drift + spring physics: home position + slow wander, plus the burst-
@@ -1654,6 +1774,9 @@ function applyTheme() {
 
 function openOpts() { renderOpts(); $('#optsModal').hidden = false; }
 function closeOpts() { $('#optsModal').hidden = true; }
+
+function openWelcome() { $('#ofMenu').hidden = true; $('#welcome').hidden = false; }
+function closeWelcome() { $('#welcome').hidden = true; localStorage.setItem('claudio_welcomed', '1'); }
 
 function renderOpts() {
   const w = $('#optsBody'); w.innerHTML = '';

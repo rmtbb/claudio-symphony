@@ -36,8 +36,9 @@
       <div class="overflow" id="overflow">
         <button class="of-btn" id="ofBtn" title="More" aria-label="More">⋯</button>
         <div class="of-menu" id="ofMenu" hidden>
+          <button id="welBtn"><span class="of-ico">✦</span> What is this?</button>
           <button id="optsBtn"><span class="of-ico">⚙</span> Options</button>
-          <button id="helpBtn"><span class="of-ico">?</span> What can I do here</button>
+          <button id="helpBtn"><span class="of-ico">?</span> Everything I can do</button>
           <button id="tipBtn"><span class="of-ico">☕</span> Buy me a coffee</button>
         </div>
       </div>
@@ -90,9 +91,11 @@
             <canvas id="sky"></canvas>
             <div class="const-hint" id="constHint">live voices · click an orb to hear it · orbs bloom as Claude plays</div>
             <div class="viz-switch" id="vizSwitch">
-              <button data-viz="orbs" title="Constellation — orbs that bloom and push each other">✦</button>
-              <button data-viz="pond" title="Still pond — every sound is a ripple">◍</button>
+              <button data-viz="orbs" title="Constellation — orbs that bloom and nudge each other">✦</button>
+              <button data-viz="pond" title="Pond — every sound is a ripple">◍</button>
               <button data-viz="tides" title="Tides — each voice is a flowing ribbon">≈</button>
+              <button data-viz="flow" title="Flow — a current that sprays particles">❋</button>
+              <button data-viz="gravity" title="Gravity — voices are stars; sounds fling orbiters">✸</button>
             </div>
           </div>
 
@@ -251,6 +254,25 @@
       </header>
       <div class="rec-body" id="recBody"></div>
       <div class="rec-list" id="recList"></div>
+    </div>
+  </div>
+
+  <!-- first-run welcome / what is this -->
+  <div class="welcome" id="welcome" hidden>
+    <div class="wel-panel">
+      <div class="wel-orbs"><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="wel-title">Welcome to Claudio <span class="wel-note">🎼</span></div>
+      <p class="wel-lead">It turns your Claude Code session into calm, generative music. Every tool call, file edit, and finished reply becomes a soft, in-key sound — so you can <em>hear</em> what your agent is doing without staring at it.</p>
+      <div class="wel-cards">
+        <div class="wel-card"><div class="wel-ico">🌌</div><div class="wel-h">Watch it play</div><div class="wel-b">Each glowing orb is an instrument — a <b>voice</b>. It blooms the instant Claude triggers it. Click any orb to hear it.</div></div>
+        <div class="wel-card"><div class="wel-ico">🎚️</div><div class="wel-h">Make it yours</div><div class="wel-b">The <b>Sounds</b> tab shows what plays when. Swap sounds, switch between 37 rooms, or build your own. Changes are live — nothing to save.</div></div>
+        <div class="wel-card"><div class="wel-ico">🎤</div><div class="wel-h">Jam with it</div><div class="wel-b">Hit <b>Listen</b> and it tunes to whatever you hum. Add a drone, a chord progression, headphones — and play along.</div></div>
+      </div>
+      <div class="wel-foot">
+        <span class="wel-tip">New here? Just let Claude work in the <b>meadow</b> room and listen for a few minutes.</span>
+        <button class="wel-go" id="welGo">Start listening →</button>
+      </div>
+      <div class="wel-reopen">You can reopen this anytime from the <b>⋯</b> menu → “What is this?”</div>
     </div>
   </div>
 
